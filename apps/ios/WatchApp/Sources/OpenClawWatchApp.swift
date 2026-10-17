@@ -317,7 +317,8 @@ extension WatchInboxStore {
 
     /// Fork: the iPhone sends cards as marker-free plain text (see `ChatMessageVisibleText`).
     private static func ocardFixtureItems(sentAtMs: Int64) -> [WatchChatItem] {
-        let entries = OpenClawOCardPreview.entries().suffix(5)
+        // The question card first, so the timeline opens on it, then the ready PR.
+        let entries = Array(OpenClawOCardPreview.entries().suffix(2).reversed())
         return entries.enumerated().map { index, entry in
             WatchChatItem(
                 id: "watch-ocard-fixture-\(index)",

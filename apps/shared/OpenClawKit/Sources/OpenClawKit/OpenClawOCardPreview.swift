@@ -20,7 +20,7 @@ public enum OpenClawOCardPreview {
                 options: ["Wariant A — 2 kolumny", "Wariant B — 1 kolumna, większe obrazki", "Pokaż oba jeszcze raz"],
                 pullRequests: ["https://github.com/example/lp-ng/pull/2201"],
                 threadKey: "agent:kodowanie:dashboard:preview-x21",
-                timestamp: ts - 1500),
+                timestamp: ts - 120),
             OpenClawOCard(
                 kind: .pr,
                 group: "X19",
@@ -30,7 +30,7 @@ public enum OpenClawOCardPreview {
                     + "Build zielony, trzy zrzuty w PR.",
                 pullRequests: ["https://github.com/example/lp-ng/pull/2198"],
                 threadKey: "agent:lpng-koder:dashboard:preview-x19",
-                timestamp: ts - 1100),
+                timestamp: ts - 400),
             OpenClawOCard(
                 kind: .error,
                 group: "X17",
@@ -38,7 +38,7 @@ public enum OpenClawOCardPreview {
                 agent: "infra",
                 summary: "Przerwane: za mało miejsca na dysku kopii. Nic nie zostało usunięte.",
                 threadKey: "agent:infra:dashboard:preview-x17",
-                timestamp: ts - 700),
+                timestamp: ts - 1100),
             OpenClawOCard(
                 kind: .done,
                 group: "X16",
@@ -46,14 +46,14 @@ public enum OpenClawOCardPreview {
                 agent: "asystent",
                 summary: "Dodane wydarzenie „Zebranie” na jutro o 18:00 z powiadomieniem.",
                 threadKey: "agent:asystent:dashboard:preview-x16",
-                timestamp: ts - 400),
+                timestamp: ts - 700),
             OpenClawOCard(
                 kind: .start,
                 group: "X22",
                 title: "Zlecone: plan kursu na listopad",
                 agent: "lpng-dane",
                 threadKey: "agent:lpng-dane:dashboard:preview-x22",
-                timestamp: ts - 120),
+                timestamp: ts - 1500),
         ]
         var entries = [
             Entry(role: "user", text: "Co dziś na mnie czeka?"),
@@ -61,7 +61,8 @@ public enum OpenClawOCardPreview {
                 role: "assistant",
                 text: "Masz jedną decyzję, jeden gotowy PR i jeden błąd do ponowienia. Szczegóły w kartach poniżej."),
         ]
-        for card in cards {
+        // Oldest first, so the question and the PR sit next to the composer.
+        for card in cards.sorted(by: { ($0.ts ?? 0) < ($1.ts ?? 0) }) {
             guard let marker = OpenClawOCardMarker.encode(card) else { continue }
             entries.append(Entry(role: "assistant", text: "\(card.title)\n\n\(marker)"))
         }

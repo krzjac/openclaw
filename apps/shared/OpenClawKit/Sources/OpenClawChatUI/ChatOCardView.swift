@@ -32,6 +32,17 @@ extension EnvironmentValues {
     @Entry public var openClawOCardActions = OpenClawOCardActions()
 }
 
+extension OpenClawChatMessage {
+    /// Fork: assistant message carrying a day-thread card marker.
+    var isOCardMessage: Bool {
+        guard self.role.lowercased() == "assistant" else { return false }
+        return self.content.contains { block in
+            guard let text = block.text, OpenClawOCardMarker.containsMarker(text) else { return false }
+            return OpenClawOCardMarker.extract(from: text) != nil
+        }
+    }
+}
+
 /// Native rendering of an `ocard:` message, mirroring the web day-thread card.
 struct ChatOCardView: View {
     private enum Outcome: Equatable {

@@ -188,12 +188,15 @@ extension OpenClawChatMessage {
     }
 
     public var isCompletedReply: Bool {
-        self.role.lowercased() == "assistant" && !self.isForwardedTurnBoundary &&
+        // Fork: day-thread cards are never the turn's answer (same rule as the web Control UI patch).
+        self.role.lowercased() == "assistant" && !self.isForwardedTurnBoundary && !self.isOCardMessage &&
             self.hasWorkReplyContent && self.workPhase != "commentary" && !self.hasUnresolvedWork
     }
 
     fileprivate var isCollapsibleWork: Bool {
+        // Fork: cards stay visible instead of folding into "Worked for …".
         !self.hasWorkMedia && !self.isForwardedTurnBoundary && !self.isRealtimeVoiceTranscript &&
+            !self.isOCardMessage &&
             (["tool", "toolresult", "tool_result"].contains(self.role.lowercased()) ||
                 (self.role.lowercased() == "assistant" && self.workPhase != "final_answer"))
     }
