@@ -617,6 +617,10 @@ public enum OpenClawWatchAppCommand: String, Codable, Sendable, Equatable {
     case sendChat = "send-chat"
     case startTalk = "start-talk"
     case stopTalk = "stop-talk"
+    /// Fork: show this session on the Watch (nil key = the day thread) without moving the iPhone chat.
+    case forkOpenThread = "fork-open-thread"
+    /// Fork: answer a day-thread card; `sessionKey` is the card's agent thread, `text` the option.
+    case forkAnswerCard = "fork-answer-card"
 }
 
 public struct OpenClawWatchAppCommandMessage: Codable, Sendable, Equatable {

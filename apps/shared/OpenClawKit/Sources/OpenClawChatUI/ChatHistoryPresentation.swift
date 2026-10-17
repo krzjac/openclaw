@@ -110,7 +110,7 @@ public enum OpenClawChatHistoryPresentation {
             OpenClawWatchChatItem(
                 id: stableID,
                 role: entry.message.role,
-                text: Self.truncatedText(entry.text),
+                text: Self.watchCardText(entry.message) ?? Self.truncatedText(entry.text),
                 timestampMs: Self.timestampMs(entry.message.timestamp))
         }
     }
@@ -142,6 +142,16 @@ public enum OpenClawChatHistoryPresentation {
             .map { String(format: "%02x", $0) }
             .joined()
         return "\(entry.message.role)-\(digest)"
+    }
+
+    /// Fork: day-thread cards reach the Watch as a compact marker so it can draw a mini card.
+    private nonisolated static func watchCardText(_ message: OpenClawChatMessage) -> String? {
+        guard message.role.lowercased() == "assistant" else { return nil }
+        let text = ChatMessageVisibleText.displayText(in: message, includeThinking: false)
+        guard OpenClawOCardMarker.containsMarker(text),
+              let card = OpenClawOCardMarker.extract(from: text)?.card
+        else { return nil }
+        return OpenClawOCardMarker.watchText(for: card)
     }
 
     private nonisolated static func truncatedText(_ text: String) -> String {

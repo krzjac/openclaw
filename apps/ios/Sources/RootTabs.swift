@@ -139,6 +139,10 @@ struct RootTabs: View {
             .overlay(alignment: .topLeading) {
                 self.uiTestReadinessMarker
             }
+            // Fork: agent threads from day-thread cards open as a sheet over the chat.
+            .sheet(item: Bindable(ForkThreadPresenter.shared).thread) { thread in
+                ForkThreadSheet(threadKey: thread.key)
+            }
             .task(id: self.chatOwnerTaskIdentity) {
                 await self.appModel.restoreChatSessionRoutingIdentityIfNeeded()
                 guard !Task.isCancelled else { return }
@@ -306,8 +310,6 @@ struct RootTabs: View {
                 openApprovals: { self.selectSettingsRoute(.approvals) },
                 openAutomations: { self.selectSidebarDestination(.cron) },
                 openUsage: { self.selectSidebarDestination(.usage) })
-        case .myPanel:
-            ForkPanelScreen(headerSidebarAction: self.sidebarHeaderAction)
         case let .dashboard(path):
             DashboardPageScreen(
                 path: path,

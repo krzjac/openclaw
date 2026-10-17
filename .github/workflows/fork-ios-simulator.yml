@@ -137,6 +137,8 @@ jobs:
           xcrun simctl status_bar "$phone" override --time 9:41 --batteryState charged --batteryLevel 100 \
             --cellularBars 4 --wifiBars 3 || true
           xcrun simctl install "$phone" "$app"
+          # First-boot system banners (e.g. Apple Intelligence) fade before the screenshots.
+          sleep 60
 
           shot() {
             local name="$1"; shift
@@ -145,9 +147,10 @@ jobs:
             sleep 30
             xcrun simctl io "$phone" screenshot "$out/$name.png"
           }
-          shot iphone-czat-karty --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
+          thread="agent:kodowanie:dashboard:preview-x21"
           shot iphone-pasek-boczny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-sidebar-visibility visible
-          shot iphone-moj-panel --openclaw-initial-destination myPanel
+          shot iphone-czat-karty --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
+          shot iphone-watek-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-fork-open-thread "$thread"
           xcrun simctl ui "$phone" appearance dark
           shot iphone-czat-karty-ciemny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
           xcrun simctl ui "$phone" appearance light
@@ -160,6 +163,10 @@ jobs:
             xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-ocard-fixture
             sleep 25
             xcrun simctl io "$watch" screenshot "$out/watch-karty.png"
+            xcrun simctl terminate "$watch" "$watch_id" || true
+            xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-fork-thread "$thread"
+            sleep 20
+            xcrun simctl io "$watch" screenshot "$out/watch-watek.png"
             xcrun simctl terminate "$watch" "$watch_id" || true
             xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-screenshot-mode
             sleep 20

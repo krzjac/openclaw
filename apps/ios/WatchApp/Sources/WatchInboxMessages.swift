@@ -466,6 +466,10 @@ extension WatchAppCommand {
             localize(.startTalk)
         case .stopTalk:
             localize(.stopTalk)
+        case .forkOpenThread:
+            localize(.openChat)
+        case .forkAnswerCard:
+            localize(.chat)
         }
     }
 }

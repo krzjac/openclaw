@@ -19,7 +19,6 @@ extension RootTabs {
 
     enum SidebarDestination: String, CaseIterable, Hashable, Identifiable {
         case chat
-        case myPanel
         case overview
         case activity
         case agents
@@ -44,7 +43,6 @@ extension RootTabs {
         var title: String {
             switch self {
             case .chat: String(localized: "Chat")
-            case .myPanel: "Mój panel"
             case .overview: String(localized: "Overview")
             case .activity: String(localized: "Activity")
             case .agents: String(localized: "Agents")
@@ -74,7 +72,6 @@ extension RootTabs {
         var systemImage: String {
             switch self {
             case .chat: "bubble.left"
-            case .myPanel: "rectangle.3.group"
             case .overview: "chart.bar"
             case .activity: "waveform.path.ecg"
             case .agents: "person.2"
@@ -104,7 +101,6 @@ extension RootTabs {
             case .usage: .dashboard(DashboardRouteMap.usagePagePath)
             case .cron: .dashboard(DashboardRouteMap.cronJobsPagePath)
             case .chat: .chat
-            case .myPanel: .myPanel
             case .overview: .overview
             case .agents: .agents
             case .sessions: .sessions
@@ -125,8 +121,6 @@ extension RootTabs {
     enum SidebarScreen: Equatable {
         case dashboard(String)
         case chat, overview, agents, sessions, files, desktop, terminal, docs, settings, gateway
-        /// Fork: the owner's Control UI with Gateway-host customizations.
-        case myPanel
     }
 
     static func notificationSettingsPath(servingEnabled: Bool, disclosureAccepted: Bool) -> String {
@@ -270,7 +264,6 @@ extension RootTabs {
 
     static let sidebarDestinations: [SidebarDestination] = [
         .chat,
-        .myPanel,
         .overview,
         .workboard,
         .usage,
@@ -294,7 +287,7 @@ extension RootTabs {
     /// Echoes the web first-run Pages zone (Home, Usage, Automations, …):
     /// compact by default so sessions stay above the fold. The Sessions page is
     /// intentionally unpinned — the sessions section + "All Sessions…" own it.
-    static let defaultPinnedSidebarPages: [SidebarDestination] = [.myPanel, .overview, .usage, .cron]
+    static let defaultPinnedSidebarPages: [SidebarDestination] = [.overview, .usage, .cron]
 
     /// "" = never customized (defaults); "none" = user unpinned everything.
     /// Storage order is the user's pin order (web parity); unknown or

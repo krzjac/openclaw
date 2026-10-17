@@ -138,6 +138,20 @@ public struct OpenClawOCard: Codable, Sendable, Equatable {
         return lines.joined(separator: "\n")
     }
 
+    /// Smaller copy for the Watch: WatchConnectivity payloads stay small and images are dropped.
+    public var watchCompact: OpenClawOCard {
+        OpenClawOCard(
+            kind: self.kind,
+            title: String(self.title.prefix(80)),
+            agent: self.agent,
+            summary: self.summary.map { String($0.prefix(160)) },
+            question: self.question.map { String($0.prefix(200)) },
+            options: self.options.prefix(4).map { String($0.prefix(60)) },
+            pullRequests: Array(self.pullRequests.prefix(2)),
+            threadKey: self.threadKey,
+            timestamp: self.ts)
+    }
+
     /// `owner/repo/pull/12` → `repo #12`; other links stay as they are.
     public static func pullRequestLabel(_ url: String) -> String {
         guard let parsed = URL(string: url), parsed.host?.lowercased() == "github.com" else { return url }
@@ -187,6 +201,24 @@ extension OpenClawOCard.Kind {
     }
 }
 
+/// Fork: the owner's day thread is the `asystent` agent's dashboard session for today.
+public enum OpenClawDayThread {
+    public static let agentID = "asystent"
+
+    public static func agentID(of sessionKey: String?) -> String? {
+        let parts = (sessionKey ?? "").split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count >= 3, parts[0].lowercased() == "agent" else { return nil }
+        let agent = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return agent.isEmpty ? nil : agent
+    }
+
+    /// Agent threads opened from cards are any other agent's sessions.
+    public static func isAgentThread(_ sessionKey: String?) -> Bool {
+        guard let agent = self.agentID(of: sessionKey) else { return false }
+        return agent.lowercased() != self.agentID
+    }
+}
+
 public enum OpenClawOCardMarker {
     public struct Match: Sendable, Equatable {
         public var card: OpenClawOCard
@@ -219,6 +251,11 @@ public enum OpenClawOCardMarker {
         var fallback = text
         fallback.removeSubrange(lower..<upper)
         return Match(card: card, fallbackText: fallback.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Marker-only text carrying a compact card, for Watch chat items.
+    public static func watchText(for card: OpenClawOCard) -> String {
+        self.encode(card.watchCompact) ?? card.plainText
     }
 
     /// Replaces a card message with its marker-free plain text; other text is returned unchanged.

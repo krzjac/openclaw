@@ -17,33 +17,52 @@ enum ForkGatewayHostAPI {
     @MainActor
     static func cardActions(appModel: NodeAppModel) -> OpenClawOCardActions {
         if appModel.isLocalChatFixtureEnabled {
-            return self.fixtureCardActions(appModel: appModel)
+            return self.fixtureCardActions()
         }
         return OpenClawOCardActions(
             answer: { threadKey, text in
-                _ = try await self.post(
-                    appModel: appModel,
-                    path: "/pr-merge/api/answer",
-                    body: ["key": threadKey, "text": text])
+                try await self.answer(appModel: appModel, threadKey: threadKey, text: text)
             },
             closeThread: { threadKey in
-                _ = try await self.post(appModel: appModel, path: "/pr-merge/api/close", body: ["key": threadKey])
+                _ = try await self.request(appModel: appModel, path: "/pr-merge/api/close", body: ["key": threadKey])
             },
             merge: { urls in
-                let response = try await self.post(
+                let response = try await self.request(
                     appModel: appModel,
                     path: "/pr-merge/api/merge",
                     body: ["urls": urls])
                 return self.mergeSummary(response, urls: urls)
             },
             openThread: { threadKey in
-                appModel.openChat(sessionKey: threadKey)
+                ForkThreadPresenter.shared.present(threadKey)
             })
+    }
+
+    /// Sends a card answer to the agent thread (same path as the web card buttons).
+    @MainActor
+    static func answer(appModel: NodeAppModel, threadKey: String, text: String) async throws {
+        if appModel.isLocalChatFixtureEnabled {
+            try await Task.sleep(for: .milliseconds(400))
+            return
+        }
+        _ = try await self.request(
+            appModel: appModel,
+            path: "/pr-merge/api/answer",
+            body: ["key": threadKey, "text": text])
+    }
+
+    /// Today's day-thread session key, or nil when the host has not started one yet.
+    @MainActor
+    static func dayThreadKey(appModel: NodeAppModel) async throws -> String? {
+        // Short timeout: Watch snapshots wait for this lookup.
+        let response = try await self.request(appModel: appModel, path: "/pr-merge/api/dzien", body: nil, timeout: 6)
+        let key = (response["key"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key?.lowercased().hasPrefix("agent:") == true ? key : nil
     }
 
     /// Screenshot and demo fixtures have no Gateway host; buttons succeed locally.
     @MainActor
-    private static func fixtureCardActions(appModel: NodeAppModel) -> OpenClawOCardActions {
+    private static func fixtureCardActions() -> OpenClawOCardActions {
         OpenClawOCardActions(
             answer: { _, _ in try await Task.sleep(for: .milliseconds(400)) },
             closeThread: { _ in try await Task.sleep(for: .milliseconds(400)) },
@@ -52,23 +71,31 @@ enum ForkGatewayHostAPI {
                 return "Zmerdżowano \(urls.map(OpenClawOCard.pullRequestLabel).joined(separator: ", ")) (podgląd)"
             },
             openThread: { threadKey in
-                appModel.openChat(sessionKey: threadKey)
+                ForkThreadPresenter.shared.present(threadKey)
             })
     }
 
+    /// GET when `body` is nil, otherwise a JSON POST.
     @MainActor
-    private static func post(appModel: NodeAppModel, path: String, body: [String: Any]) async throws -> [String: Any] {
+    private static func request(
+        appModel: NodeAppModel,
+        path: String,
+        body: [String: Any]?,
+        timeout: TimeInterval = 120) async throws -> [String: Any]
+    {
         guard let config = appModel.activeGatewayConnectConfig,
               let url = AuthenticatedControlUI.pageURL(config: config, path: path, queryItems: [])
         else {
             throw Failure(message: "Brak połączenia z Gatewayem.")
         }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 120)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // The host API rejects POSTs without this header (no plain cross-site forms).
-        request.setValue("1", forHTTPHeaderField: "X-PR-Merge")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        if let body {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // The host API rejects POSTs without this header (no plain cross-site forms).
+            request.setValue("1", forHTTPHeaderField: "X-PR-Merge")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
         let (data, response) = try await URLSession.shared.data(for: request)
         let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -93,8 +120,8 @@ enum ForkGatewayHostAPI {
     }
 }
 
-/// Fork: `openclaw://session?key=agent:<agent>:<rest>` opens that chat session. Kept out of the
-/// shared deep-link parser so upstream merges stay small.
+/// Fork: `openclaw://session?key=agent:<agent>:<rest>` opens that agent thread in a sheet. Kept out
+/// of the shared deep-link parser so upstream merges stay small.
 enum ForkSessionDeepLink {
     static func sessionKey(from url: URL) -> String? {
         guard let scheme = url.scheme?.lowercased(), scheme == "openclaw" || scheme == "openclaw-debug",

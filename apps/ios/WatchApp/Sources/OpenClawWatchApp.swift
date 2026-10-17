@@ -22,6 +22,10 @@ enum WatchScreenshotMode {
     /// Fork: sample day-thread cards in the chat timeline, opened on launch.
     static let ocardCards = ProcessInfo.processInfo.arguments.contains("--openclaw-watch-ocard-fixture")
         || ProcessInfo.processInfo.environment["OPENCLAW_WATCH_OCARD_FIXTURE"] == "1"
+        || WatchScreenshotMode.forkThreadKey != nil
+    /// Fork: `--openclaw-watch-fork-thread <key>` opens that agent thread in the card fixture.
+    static let forkThreadKey = ProcessInfo.processInfo.arguments
+        .drop(while: { $0 != "--openclaw-watch-fork-thread" }).dropFirst().first
     static let enabled = ProcessInfo.processInfo.arguments.contains("--openclaw-watch-screenshot-mode")
         || ProcessInfo.processInfo.environment["OPENCLAW_WATCH_SCREENSHOT_MODE"] == "1"
         || UserDefaults.standard.bool(forKey: WatchScreenshotMode.defaultsKey)
@@ -100,6 +104,7 @@ struct OpenClawWatchApp: App {
                 onSendChatMessage: { text, spokenReply in
                     await self.sendChatMessage(text, spokenReply: spokenReply)
                 })
+                .environment(\.forkWatchActions, self.forkWatchActions)
                 .task {
                     UNUserNotificationCenter.current().delegate = self.notificationDelegate
                     if WatchScreenshotMode.enabled {
@@ -107,6 +112,9 @@ struct OpenClawWatchApp: App {
                             includeApproval: WatchScreenshotMode.approvals)
                         if WatchScreenshotMode.ocardCards {
                             self.navigationPath = [.chatTimeline]
+                            if let threadKey = WatchScreenshotMode.forkThreadKey {
+                                self.inboxStore.configureForkThreadFixture(threadKey: threadKey)
+                            }
                         }
                         return
                     }
@@ -163,6 +171,38 @@ struct OpenClawWatchApp: App {
         Task { @MainActor in
             let result = await receiver.requestAppSnapshot()
             self.inboxStore.markAppSnapshotRequestResult(result, attemptID: attemptID)
+        }
+    }
+
+    /// Fork: card buttons and thread switches go to the iPhone; the screenshot fixture answers locally.
+    private var forkWatchActions: ForkWatchActions {
+        ForkWatchActions(
+            openThread: { threadKey in
+                if WatchScreenshotMode.enabled {
+                    self.inboxStore.configureForkThreadFixture(threadKey: threadKey)
+                    return
+                }
+                self.sendForkCommand(.forkOpenThread, sessionKey: threadKey, text: nil)
+            },
+            answer: { threadKey, text in
+                guard !WatchScreenshotMode.enabled else { return }
+                self.sendForkCommand(.forkAnswerCard, sessionKey: threadKey, text: text)
+            })
+    }
+
+    private func sendForkCommand(_ command: WatchAppCommand, sessionKey: String?, text: String?) {
+        guard let receiver else { return }
+        let message = WatchAppCommandMessage(
+            command: command,
+            commandId: UUID().uuidString,
+            sessionKey: sessionKey,
+            gatewayStableID: self.inboxStore.appSnapshot?.gatewayStableID,
+            text: text,
+            sentAtMs: Int64(Date().timeIntervalSince1970 * 1000))
+        let attemptID = self.inboxStore.markAppCommandSending(command)
+        Task { @MainActor in
+            let result = await receiver.sendAppCommand(message)
+            self.inboxStore.markAppCommandResult(result, command: command, attemptID: attemptID)
         }
     }
 
@@ -315,16 +355,56 @@ extension WatchInboxStore {
                 snapshotId: "watch-screenshot-now-face"))
     }
 
-    /// Fork: the iPhone sends cards as marker-free plain text (see `ChatMessageVisibleText`).
+    /// Fork: the iPhone sends cards as compact `ocard:` markers (see `ChatHistoryPresentation`).
     private static func ocardFixtureItems(sentAtMs: Int64) -> [WatchChatItem] {
-        // The question card first, so the timeline opens on it, then the ready PR.
-        let entries = Array(OpenClawOCardPreview.entries().suffix(2).reversed())
+        // The question card first, so the timeline opens on it, then the ready PR and the rest.
+        let entries = Array(OpenClawOCardPreview.entries().suffix(4).reversed())
         return entries.enumerated().map { index, entry in
-            WatchChatItem(
+            let card = OpenClawOCardMarker.extract(from: entry.text)?.card
+            return WatchChatItem(
                 id: "watch-ocard-fixture-\(index)",
                 role: entry.role,
-                text: OpenClawOCardMarker.plainText(from: entry.text),
+                text: card.map(OpenClawOCardMarker.watchText(for:)) ?? entry.text,
                 timestampMs: sentAtMs - Int64((entries.count - index) * 60000))
         }
+    }
+
+    /// Fork fixture: opening a card's thread swaps in a short agent thread; nil returns to the day thread.
+    fileprivate func configureForkThreadFixture(threadKey: String?) {
+        guard let threadKey else {
+            self.configureScreenshotFixture()
+            return
+        }
+        let sentAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let agent = OpenClawDayThread.agentID(of: threadKey) ?? "agent"
+        let lines: [(String, String)] = [
+            ("assistant", "Przygotowałem dwa układy karty pracy: A — 2 kolumny, B — 1 kolumna z większymi obrazkami."),
+            ("user", "Pokaż oba jeszcze raz"),
+            ("assistant", "Wysłałem podgląd obu wariantów do PR #2201. Który wdrożyć?"),
+        ]
+        self.consume(
+            appSnapshot: WatchAppSnapshotMessage(
+                gatewayStatus: OpenClawWatchAppStatus(code: .gatewayConnected),
+                gatewayConnected: true,
+                agentName: agent,
+                agentAvatarURL: nil,
+                agentAvatarText: String(agent.prefix(1)).uppercased(),
+                sessionKey: threadKey,
+                gatewayStableID: "watch-screenshot-gateway",
+                talkStatus: OpenClawWatchAppStatus(code: .talkReady),
+                talkEnabled: true,
+                talkListening: false,
+                talkSpeaking: false,
+                pendingApprovalCount: 0,
+                chatItems: lines.enumerated().map { index, line in
+                    WatchChatItem(
+                        id: "watch-fork-thread-\(index)",
+                        role: line.0,
+                        text: line.1,
+                        timestampMs: sentAtMs - Int64((lines.count - index) * 60000))
+                },
+                chatStatus: nil,
+                sentAtMs: sentAtMs,
+                snapshotId: "watch-fork-thread-\(threadKey)"))
     }
 }

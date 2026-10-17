@@ -442,7 +442,8 @@ struct WatchInboxView: View {
         if let record = store.activeExecApproval {
             return record.approval.commandPreview ?? record.approval.commandText
         }
-        return self.chatItems.last?.text ?? self.store.gatewaySummaryText
+        // Fork: day-thread cards read as plain text outside the timeline.
+        return self.chatItems.last.map { OpenClawOCardMarker.plainText(from: $0.text) } ?? self.store.gatewaySummaryText
     }
 
     private var primarySubtitle: String {
@@ -509,7 +510,7 @@ struct WatchInboxView: View {
     }
 
     private var chatPreviewSubtitle: String {
-        self.chatItems.last?.text ?? self.chatStatusText
+        self.chatItems.last.map { OpenClawOCardMarker.plainText(from: $0.text) } ?? self.chatStatusText
     }
 
     private var chatStatusText: String {
@@ -1052,6 +1053,15 @@ private struct WatchChatBubble: View {
     var avatarText: String?
 
     var body: some View {
+        // Fork: day-thread cards arrive as a compact `ocard:` marker and render as mini cards.
+        if !self.isUser, let card = OpenClawOCardMarker.extract(from: self.item.text)?.card {
+            ForkWatchCardView(card: card)
+        } else {
+            self.bubble
+        }
+    }
+
+    private var bubble: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if !self.isUser {
                 WatchClawAvatar(
@@ -1123,6 +1133,9 @@ private struct WatchChatTimelineView: View {
         VStack(spacing: 7) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    if OpenClawDayThread.isAgentThread(self.store.appSnapshot?.sessionKey) {
+                        ForkWatchDayThreadBackButton()
+                    }
                     if self.items.isEmpty {
                         WatchChatEmptyState(statusText: self.statusText)
                     } else {
