@@ -37,6 +37,8 @@ struct WatchInboxView: View {
                     switch destination {
                     case .standaloneVoice:
                         WatchRealtimeCallView(directNode: self.directNode)
+                    case .chatTimeline:
+                        self.chatTimelineDestination
                     }
                 }
         }

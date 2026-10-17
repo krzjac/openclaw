@@ -8921,6 +8921,11 @@ extension NodeAppModel {
     }
 
     func handleDeepLink(url: URL) async {
+        // Fork: `openclaw://session?key=…` (push taps, card links) opens that chat session.
+        if let sessionKey = ForkSessionDeepLink.sessionKey(from: url) {
+            self.openChat(sessionKey: sessionKey)
+            return
+        }
         guard let route = DeepLinkParser.parse(url) else { return }
 
         switch route {

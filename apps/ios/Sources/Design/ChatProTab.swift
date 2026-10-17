@@ -179,6 +179,8 @@ struct ChatProTab: View {
                 })
                 // iMessage-style grey bubbles for agent replies in the clean chrome.
                 .environment(\.openClawAssistantBubblesInCleanChrome, true)
+                // Fork: day-thread card buttons call the owner's Gateway host API.
+                .environment(\.openClawOCardActions, ForkGatewayHostAPI.cardActions(appModel: self.appModel))
                 .environment(
                     \.openClawEmbeddedBrowserUnavailableReason,
                     self.appModel.activeGatewayConnectConfig?.ingressAuthorization == nil ? nil :

@@ -188,6 +188,15 @@ public enum OpenClawChatTheme {
         #endif
     }
 
+    /// Fork: day-thread card accents, matching the web card palette (#8250df, #0969da).
+    static var ocardInfo: Color {
+        Color(red: 130 / 255.0, green: 80 / 255.0, blue: 223 / 255.0)
+    }
+
+    static var ocardProgress: Color {
+        Color(red: 9 / 255.0, green: 105 / 255.0, blue: 218 / 255.0)
+    }
+
     static var assistantBubble: Color {
         #if os(macOS)
         Color(nsColor: self.assistantBubbleDynamicNSColor)

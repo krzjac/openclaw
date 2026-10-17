@@ -458,6 +458,8 @@ extension ChatMessageBubble {
         VStack(alignment: .leading, spacing: 10) {
             if self.isUser {
                 self.userMessageText(text: text, textColor: textColor)
+            } else if let card = self.ocard {
+                ChatOCardView(card: card)
             } else {
                 ChatAssistantTextBody(
                     text: text,
@@ -474,7 +476,7 @@ extension ChatMessageBubble {
                     loadFavicon: self.loadSourceFavicon)
             }
 
-            if let previewURL = self.linkPreviewURL {
+            if let previewURL = self.linkPreviewURL, self.ocard == nil {
                 ChatLinkPreview(url: previewURL)
             }
 
@@ -583,7 +585,17 @@ extension ChatMessageBubble {
         // Keep the guarded base condition; iOS additionally opts assistant
         // messages into bubbles via the clean-chrome environment flag.
         if self.isUser { return true }
+        // Fork: day-thread cards draw their own surface, like the web Control UI.
+        if self.ocard != nil { return false }
         return !self.isRunContent && (self.style == .onboarding || !self.isClean || self.assistantBubblesInClean)
+    }
+
+    /// Fork: `ocard:` marker posted by the Gateway host scripts (day-thread cards).
+    private var ocard: OpenClawOCard? {
+        guard !self.isUser else { return nil }
+        let text = self.primaryText
+        guard OpenClawOCardMarker.containsMarker(text) else { return nil }
+        return OpenClawOCardMarker.extract(from: text)?.card
     }
 
     private var shouldRenderBubble: Bool {

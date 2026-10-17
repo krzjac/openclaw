@@ -306,6 +306,8 @@ struct RootTabs: View {
                 openApprovals: { self.selectSettingsRoute(.approvals) },
                 openAutomations: { self.selectSidebarDestination(.cron) },
                 openUsage: { self.selectSidebarDestination(.usage) })
+        case .myPanel:
+            ForkPanelScreen(headerSidebarAction: self.sidebarHeaderAction)
         case let .dashboard(path):
             DashboardPageScreen(
                 path: path,

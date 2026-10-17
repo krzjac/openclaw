@@ -944,6 +944,15 @@ private actor LocalFixtureChatStore {
 
     private static func seedMessages(fixture: LocalChatFixture) -> [OpenClawChatMessage] {
         let now = Date().timeIntervalSince1970 * 1000
+        if ForkCardFixture.isEnabled {
+            return ForkCardFixture.seed().enumerated().map { index, entry in
+                self.message(
+                    role: entry.role,
+                    text: entry.text,
+                    timestamp: now + Double(index),
+                    transcriptMessageID: "fixture-ocard-\(index)")
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--openclaw-system-notices-fixture") {
             return [
                 OpenClawChatMessage(

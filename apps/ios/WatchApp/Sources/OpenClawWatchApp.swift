@@ -19,14 +19,20 @@ enum WatchScreenshotMode {
     static let approvals = ProcessInfo.processInfo.arguments.contains(
         "--openclaw-watch-approval-screenshot-mode")
         || ProcessInfo.processInfo.environment["OPENCLAW_WATCH_APPROVAL_SCREENSHOT_MODE"] == "1"
+    /// Fork: sample day-thread cards in the chat timeline, opened on launch.
+    static let ocardCards = ProcessInfo.processInfo.arguments.contains("--openclaw-watch-ocard-fixture")
+        || ProcessInfo.processInfo.environment["OPENCLAW_WATCH_OCARD_FIXTURE"] == "1"
     static let enabled = ProcessInfo.processInfo.arguments.contains("--openclaw-watch-screenshot-mode")
         || ProcessInfo.processInfo.environment["OPENCLAW_WATCH_SCREENSHOT_MODE"] == "1"
         || UserDefaults.standard.bool(forKey: WatchScreenshotMode.defaultsKey)
         || WatchScreenshotMode.approvals
+        || WatchScreenshotMode.ocardCards
 }
 
 enum WatchDestination: Hashable {
     case standaloneVoice
+    /// Fork: lets the card fixture open the chat timeline directly.
+    case chatTimeline
 }
 
 @main
@@ -99,6 +105,9 @@ struct OpenClawWatchApp: App {
                     if WatchScreenshotMode.enabled {
                         self.inboxStore.configureScreenshotFixture(
                             includeApproval: WatchScreenshotMode.approvals)
+                        if WatchScreenshotMode.ocardCards {
+                            self.navigationPath = [.chatTimeline]
+                        }
                         return
                     }
                     if self.receiver == nil {
@@ -289,7 +298,7 @@ extension WatchInboxStore {
                 talkListening: false,
                 talkSpeaking: false,
                 pendingApprovalCount: approvals.count,
-                chatItems: [
+                chatItems: WatchScreenshotMode.ocardCards ? Self.ocardFixtureItems(sentAtMs: sentAtMs) : [
                     WatchChatItem(
                         id: "watch-screenshot-user-chat",
                         role: "user",
@@ -304,5 +313,17 @@ extension WatchInboxStore {
                 chatStatus: nil,
                 sentAtMs: sentAtMs,
                 snapshotId: "watch-screenshot-now-face"))
+    }
+
+    /// Fork: the iPhone sends cards as marker-free plain text (see `ChatMessageVisibleText`).
+    private static func ocardFixtureItems(sentAtMs: Int64) -> [WatchChatItem] {
+        let entries = OpenClawOCardPreview.entries().suffix(5)
+        return entries.enumerated().map { index, entry in
+            WatchChatItem(
+                id: "watch-ocard-fixture-\(index)",
+                role: entry.role,
+                text: OpenClawOCardMarker.plainText(from: entry.text),
+                timestampMs: sentAtMs - Int64((entries.count - index) * 60000))
+        }
     }
 }

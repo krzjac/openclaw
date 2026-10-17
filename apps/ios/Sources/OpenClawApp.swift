@@ -163,7 +163,7 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         open url: URL,
         options _: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool
     {
-        guard DeepLinkParser.parse(url) != nil else { return false }
+        guard DeepLinkParser.parse(url) != nil || ForkSessionDeepLink.sessionKey(from: url) != nil else { return false }
         guard let model = resolvedAppModel() else {
             self.pendingOpenURLs.append(url)
             return true
