@@ -391,6 +391,7 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         // Fork: host pushes for agent turns and cards; no banner for the thread already open.
         if let payload = ForkNotifications.payload(from: userInfo) {
             completionHandler(ForkNotifications.shouldPresent(payload) ? [.banner, .list, .sound] : [.list])
+            ForkNotifications.noteForegroundDelivery(payload, appModel: self.resolvedAppModel())
             return
         }
         if Self.isWatchPromptNotification(userInfo)

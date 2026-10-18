@@ -87,6 +87,20 @@ enum ForkNotifications {
         }
     }
 
+    /// `--openclaw-fork-push-tap-fixture`: a received push runs the same handling as a tap, so CI can prove
+    /// APNs payload → delegate → parsing → thread sheet without tapping the system banner.
+    @MainActor
+    static func noteForegroundDelivery(_ payload: Payload, appModel: NodeAppModel?) {
+        guard ProcessInfo.processInfo.arguments.contains("--openclaw-fork-push-tap-fixture") else { return }
+        Task { @MainActor in
+            await self.handle(
+                payload,
+                actionIdentifier: UNNotificationDefaultActionIdentifier,
+                textInput: nil,
+                appModel: appModel)
+        }
+    }
+
     /// Foreground: no banner for the thread already open in the sheet.
     @MainActor
     static func shouldPresent(_ payload: Payload) -> Bool {

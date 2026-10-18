@@ -139,7 +139,10 @@ jobs:
           xcrun simctl install "$phone" "$app"
           # Full notification permission (no system prompt) so pushed samples show as banners.
           if brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1; then
-            applesimutils --byId "$phone" --bundle "$app_id" --setPermissions notifications=YES || true
+            applesimutils --byId "$phone" --bundle "$app_id" --setPermissions notifications=YES \
+              && echo "applesimutils: notifications=YES" || echo "applesimutils: failed"
+          else
+            echo "applesimutils: not installed"
           fi
           # First-boot system banners (e.g. Apple Intelligence) fade before the screenshots.
           sleep 60
@@ -163,10 +166,11 @@ jobs:
           xcrun simctl push "$phone" "$app_id" apps/ios/fork-push-samples/question.apns || true
           sleep 3
           xcrun simctl io "$phone" screenshot "$out/iphone-push-baner.png"
+          # The tap fixture runs the tap handling for a received push: payload → thread sheet.
+          shot iphone-push-tap-start --openclaw-no-reactions-fixture --openclaw-ocard-fixture \
+            --openclaw-fork-push-fixture --openclaw-fork-push-tap-fixture
+          xcrun simctl push "$phone" "$app_id" apps/ios/fork-push-samples/done.apns || true
           sleep 8
-          # Debug builds register the openclaw-debug scheme (Release: openclaw).
-          xcrun simctl openurl "$phone" "openclaw-debug://session?key=$thread" || true
-          sleep 10
           xcrun simctl io "$phone" screenshot "$out/iphone-push-otwiera-watek.png"
           xcrun simctl ui "$phone" appearance dark
           shot iphone-czat-karty-ciemny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
