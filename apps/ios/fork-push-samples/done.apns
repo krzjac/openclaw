@@ -1,0 +1,17 @@
+{
+  "Simulator Target Bundle": "ai.openclawfoundation.app.debug",
+  "aps": {
+    "alert": {
+      "title": "✅ lpng-koder skończył",
+      "body": "Filtr po grupie na liście uczniów (X19) — PR gotowy"
+    },
+    "sound": "default",
+    "thread-id": "agent:lpng-koder:dashboard:preview-x19",
+    "category": "openclaw.fork.pr"
+  },
+  "openclaw.fork": {
+    "sessionKey": "agent:lpng-koder:dashboard:preview-x19",
+    "kind": "pr",
+    "pr": "https://github.com/example/lp-ng/pull/2198"
+  }
+}

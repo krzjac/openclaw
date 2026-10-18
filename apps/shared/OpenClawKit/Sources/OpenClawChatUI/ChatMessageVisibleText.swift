@@ -1,4 +1,5 @@
 import Foundation
+import OpenClawKit
 
 /// Plain-text projection of a transcript message: exactly what the reader sees
 /// in the bubble, with tool traces and non-text blocks removed. Shared by the
@@ -28,9 +29,11 @@ public enum ChatMessageVisibleText {
         let text = self.displayText(in: message, includeThinking: false)
         let role = message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard role != "user" else { return text }
-        return AssistantTextParser.visibleSegments(from: text)
+        let visible = AssistantTextParser.visibleSegments(from: text)
             .map(\.text)
             .joined(separator: "\n\n")
+        // Fork: day-thread cards read as plain text everywhere outside the card view.
+        return OpenClawOCardMarker.plainText(from: visible)
     }
 
     static func hasVisibleText(in message: OpenClawChatMessage) -> Bool {

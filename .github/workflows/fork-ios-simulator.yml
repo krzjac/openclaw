@@ -1,0 +1,214 @@
+# Fork-only: build the iOS + watchOS apps for the simulator, run the day-thread card fixture on an
+# iPhone and a paired Apple Watch simulator, and upload screenshots plus the simulator .app.
+name: Fork iOS simulator preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fork/**"
+    paths:
+      - "apps/ios/**"
+      - "apps/shared/**"
+      - ".github/workflows/fork-ios-simulator.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-preview:
+    if: github.repository == 'krzjac/openclaw'
+    runs-on: macos-26
+    timeout-minutes: 150
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [[ -z "$xcode" ]]; then xcode="/Applications/Xcode.app"; fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+
+      - name: Install pnpm and native asset dependencies
+        run: |
+          set -euo pipefail
+          npm install -g pnpm@12.11.1
+          pnpm install --frozen-lockfile --prefer-offline --optional \
+            --filter '@openclaw/mermaid-renderer...' \
+            --filter '@openclaw/gateway-protocol...' \
+            --config.ignore-scripts=false \
+            --config.engine-strict=false \
+            --config.enable-pre-post-scripts=true
+
+      - name: Install Watch Rust toolchain
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          toolchain="$(awk -F '"' '/^channel =/ { print $2; exit }' apps/shared/OpenClawWatchRTC/rust-toolchain.toml)"
+          rustup toolchain install "$toolchain" --profile minimal --component rust-src
+
+      - name: Install pinned Swift tools
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/swift-tools"
+          ./scripts/install-xcodegen.sh "$dir"
+          ./scripts/install-swift-tools.sh "$dir"
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Generate Xcode project
+        run: pnpm ios:gen
+
+      - name: Build for simulator
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rc=0
+          xcodebuild \
+            -project apps/ios/OpenClaw.xcodeproj \
+            -scheme OpenClaw \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES COMPILER_INDEX_STORE_ENABLE=NO \
+            build > "$RUNNER_TEMP/xcodebuild.log" 2>&1 || rc=$?
+          grep -E "error:|: warning:|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/xcodebuild.log" | sort -u | tail -200 || true
+          tail -30 "$RUNNER_TEMP/xcodebuild.log"
+          exit "$rc"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ${{ runner.temp }}/xcodebuild.log
+
+      - name: Run fixtures and take screenshots
+        run: |
+          set -euo pipefail
+          products="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator"
+          app="$(find "$products" -maxdepth 1 -name '*.app' -print -quit)"
+          echo "app=$app"
+          watch_app="$(find "$app/Watch" -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)"
+          echo "watch_app=$watch_app"
+          app_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+          out="$RUNNER_TEMP/shots"
+          mkdir -p "$out"
+
+          read -r phone_type phone_runtime watch_type watch_runtime < <(xcrun simctl list -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          def latest(prefix):
+              rs = [r for r in d["runtimes"] if r["isAvailable"] and r["identifier"].startswith(prefix)]
+              return max(rs, key=lambda r: [int(x) for x in r["version"].split(".")]) if rs else None
+          def pick(rt, words):
+              types = [t["identifier"] for t in rt.get("supportedDeviceTypes", [])] if rt else []
+              for w in words:
+                  for t in reversed(types):
+                      if w in t:
+                          return t
+              return types[-1] if types else "-"
+          ios = latest("com.apple.CoreSimulator.SimRuntime.iOS")
+          watch = latest("com.apple.CoreSimulator.SimRuntime.watchOS")
+          print(pick(ios, ["iPhone-17-Pro", "iPhone-16-Pro", "iPhone"]), ios["identifier"],
+                pick(watch, ["Series-11-46mm", "Series-10-46mm", "Ultra"]), watch["identifier"] if watch else "-")
+          ')
+          echo "phone=$phone_type $phone_runtime watch=$watch_type $watch_runtime"
+          phone="$(xcrun simctl create 'Fork iPhone' "$phone_type" "$phone_runtime")"
+          watch=""
+          if [[ "$watch_runtime" != "-" && -n "$watch_app" ]]; then
+            watch="$(xcrun simctl create 'Fork Watch' "$watch_type" "$watch_runtime")"
+            xcrun simctl pair "$watch" "$phone" || true
+          fi
+          xcrun simctl boot "$phone"
+          xcrun simctl bootstatus "$phone" -b
+          xcrun simctl status_bar "$phone" override --time 9:41 --batteryState charged --batteryLevel 100 \
+            --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$phone" "$app"
+          # Full notification permission (no system prompt) so pushed samples show as banners.
+          if brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1; then
+            applesimutils --byId "$phone" --bundle "$app_id" --setPermissions notifications=YES \
+              && echo "applesimutils: notifications=YES" || echo "applesimutils: failed"
+          else
+            echo "applesimutils: not installed"
+          fi
+          # First-boot system banners (e.g. Apple Intelligence) fade before the screenshots.
+          sleep 60
+
+          shot() {
+            local name="$1"; shift
+            xcrun simctl terminate "$phone" "$app_id" 2>/dev/null || true
+            xcrun simctl launch "$phone" "$app_id" --openclaw-screenshot-mode "$@"
+            sleep 30
+            xcrun simctl io "$phone" screenshot "$out/$name.png"
+          }
+          thread="agent:kodowanie:dashboard:preview-x21"
+          shot iphone-pasek-boczny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-sidebar-visibility visible
+          shot iphone-czat-karty --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
+          shot iphone-watek-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-fork-open-thread "$thread"
+          shot iphone-pr-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture \
+            --openclaw-fork-open-pr "https://github.com/example/lp-ng/pull/2198"
+          shot iphone-pracuje-teraz --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-work-now-expanded
+          # Push: sample host payload as a banner, then the deep link a tap uses (thread sheet).
+          shot iphone-przed-pushem --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-fork-push-fixture
+          xcrun simctl push "$phone" "$app_id" apps/ios/fork-push-samples/question.apns || true
+          sleep 3
+          xcrun simctl io "$phone" screenshot "$out/iphone-push-baner.png"
+          # The tap fixture runs the tap handling for a received push: payload → thread sheet.
+          shot iphone-push-tap-start --openclaw-no-reactions-fixture --openclaw-ocard-fixture \
+            --openclaw-fork-push-fixture --openclaw-fork-push-tap-fixture
+          xcrun simctl push "$phone" "$app_id" apps/ios/fork-push-samples/done.apns || true
+          sleep 8
+          xcrun simctl io "$phone" screenshot "$out/iphone-push-otwiera-watek.png"
+          xcrun simctl ui "$phone" appearance dark
+          shot iphone-czat-karty-ciemny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
+          xcrun simctl ui "$phone" appearance light
+
+          if [[ -n "$watch" ]]; then
+            watch_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$watch_app/Info.plist")"
+            xcrun simctl boot "$watch" || true
+            xcrun simctl bootstatus "$watch" -b
+            xcrun simctl install "$watch" "$watch_app"
+            xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-ocard-fixture
+            sleep 25
+            xcrun simctl io "$watch" screenshot "$out/watch-karty.png"
+            xcrun simctl terminate "$watch" "$watch_id" || true
+            xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-fork-thread "$thread"
+            sleep 20
+            xcrun simctl io "$watch" screenshot "$out/watch-watek.png"
+            xcrun simctl terminate "$watch" "$watch_id" || true
+            xcrun simctl launch "$watch" "$watch_id" --openclaw-watch-screenshot-mode
+            sleep 20
+            xcrun simctl io "$watch" screenshot "$out/watch-teraz.png"
+          fi
+          ls -la "$out"
+
+          mkdir -p "$RUNNER_TEMP/app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/app/OpenClaw-simulator.zip"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: warn
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenClaw-simulator-app
+          path: ${{ runner.temp }}/app/OpenClaw-simulator.zip
+          retention-days: 30

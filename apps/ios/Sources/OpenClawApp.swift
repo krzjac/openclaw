@@ -152,6 +152,7 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         let notificationCenter = UNUserNotificationCenter.current()
         notificationCenter.delegate = self
         ApprovalNotificationBridge.registerCategories(center: notificationCenter)
+        ForkNotifications.registerCategories()
         Task { @MainActor in
             await self.registerForRemoteNotificationsIfEnrollmentReady(application)
         }
@@ -163,7 +164,7 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         open url: URL,
         options _: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool
     {
-        guard DeepLinkParser.parse(url) != nil else { return false }
+        guard DeepLinkParser.parse(url) != nil || ForkSessionDeepLink.sessionKey(from: url) != nil else { return false }
         guard let model = resolvedAppModel() else {
             self.pendingOpenURLs.append(url)
             return true
@@ -387,6 +388,12 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void)
     {
         let userInfo = notification.request.content.userInfo
+        // Fork: host pushes for agent turns and cards; no banner for the thread already open.
+        if let payload = ForkNotifications.payload(from: userInfo) {
+            completionHandler(ForkNotifications.shouldPresent(payload) ? [.banner, .list, .sound] : [.list])
+            ForkNotifications.noteForegroundDelivery(payload, appModel: self.resolvedAppModel())
+            return
+        }
         if Self.isWatchPromptNotification(userInfo)
             || ApprovalNotificationBridge.parseRequestedPush(userInfo: userInfo) != nil
         {
@@ -401,6 +408,19 @@ final class OpenClawAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void)
     {
+        if let payload = ForkNotifications.payload(from: response.notification.request.content.userInfo) {
+            let textInput = (response as? UNTextInputNotificationResponse)?.userText
+            let actionIdentifier = response.actionIdentifier
+            Task { @MainActor [weak self] in
+                await ForkNotifications.handle(
+                    payload,
+                    actionIdentifier: actionIdentifier,
+                    textInput: textInput,
+                    appModel: self?.resolvedAppModel())
+                completionHandler()
+            }
+            return
+        }
         if let action = Self.parseWatchPromptAction(
             actionIdentifier: response.actionIdentifier,
             userInfo: response.notification.request.content.userInfo)
@@ -629,6 +649,8 @@ struct OpenClawApp: App {
             UserDefaults.standard.set(true, forKey: "gateway.hasConnectedOnce")
             UserDefaults.standard.set(true, forKey: "onboarding.quickSetupDismissed")
             appModel.enterScreenshotFixtureMode()
+            ForkSheetPresenter.shared.presentLaunchItemIfRequested()
+            ForkNotifications.prepareFixtureIfRequested()
             if Self.screenshotNotificationGuidanceEnabled {
                 appModel._debug_presentNotificationPermissionGuidancePromptForScreenshot()
             }

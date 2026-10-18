@@ -5864,6 +5864,7 @@ extension NodeAppModel {
     }
 
     private func makeWatchAppSnapshot(
+        sessionKey: String? = nil,
         chatPreview: WatchChatPreview? = nil,
         chatDeliveryContext: OpenClawWatchChatDeliveryContext? = nil) -> OpenClawWatchAppSnapshotMessage
     {
@@ -5881,7 +5882,7 @@ extension NodeAppModel {
             agentName: self.chatAgentName,
             agentAvatarURL: self.chatAgentAvatarURL,
             agentAvatarText: self.chatAgentAvatarText,
-            sessionKey: self.chatSessionKey,
+            sessionKey: sessionKey ?? self.chatSessionKey,
             gatewayStableID: self.currentWatchChatGatewayStableID(),
             talkStatus: self.makeWatchTalkStatus(),
             talkStatusText: self.talkMode.statusText,
@@ -6040,6 +6041,16 @@ extension NodeAppModel {
             self.setTalkEnabled(true)
         case .stopTalk:
             self.setTalkEnabled(false)
+        case .forkOpenThread:
+            ForkWatchFocus.shared.open(threadKey: event.sessionKey)
+        case .forkAnswerCard:
+            if let threadKey = event.sessionKey, let text = event.text {
+                do {
+                    try await ForkGatewayHostAPI.answer(appModel: self, threadKey: threadKey, text: text)
+                } catch {
+                    GatewayDiagnostics.log("watch card answer failed error=\(error.localizedDescription)")
+                }
+            }
         }
         await self.syncWatchAppSnapshot(
             reason: "watch_command_\(event.command.rawValue)",
@@ -6226,6 +6237,11 @@ extension NodeAppModel {
         }
     }
 
+    /// Fork: host events (new card, work started/finished, thread deleted) refresh the Watch at once.
+    func forkSyncWatchSnapshot(reason: String) async {
+        await self.syncWatchAppSnapshot(reason: "fork_\(reason)", includeChat: true)
+    }
+
     private func syncWatchAppSnapshot(
         reason: String,
         includeChat: Bool = false,
@@ -6233,19 +6249,29 @@ extension NodeAppModel {
     {
         guard shouldContinue() else { return }
         let deliveryGeneration = self.gatewayConnectGeneration
-        let sessionKey = self.chatSessionKey
-        let agentID = self.chatDeliveryAgentId
+        // Fork: the Watch shows the day thread (or a card's agent thread), not the iPhone's open chat.
+        let watchFocus = ForkWatchFocus.shared
+        await watchFocus.refreshDayThreadIfNeeded(appModel: self)
+        let sessionKey = watchFocus.sessionKey(appModel: self)
+        let agentID = watchFocus.agentID(for: sessionKey, appModel: self)
         let context = await self.makeWatchChatDeliveryContext(
             sessionKey: sessionKey, agentID: agentID, gatewayStableID: self.currentWatchChatGatewayStableID())
-        let chatPreview = includeChat ? await makeWatchChatPreview(sessionKey: sessionKey, agentID: agentID) : nil
+        var chatPreview = includeChat ? await makeWatchChatPreview(sessionKey: sessionKey, agentID: agentID) : nil
+        if let items = chatPreview?.items {
+            chatPreview?.items = await watchFocus.decoratedItems(items, sessionKey: sessionKey, appModel: self)
+        }
         guard shouldContinue() else { return }
         guard deliveryGeneration == self.gatewayConnectGeneration,
-              sessionKey.utf8.elementsEqual(self.chatSessionKey.utf8), agentID == self.chatDeliveryAgentId
+              sessionKey.utf8.elementsEqual(watchFocus.sessionKey(appModel: self).utf8),
+              agentID == watchFocus.agentID(for: sessionKey, appModel: self)
         else {
             await self.syncWatchAppSnapshot(reason: "\(reason)_route_repair")
             return
         }
-        let message = self.makeWatchAppSnapshot(chatPreview: chatPreview, chatDeliveryContext: context)
+        let message = self.makeWatchAppSnapshot(
+            sessionKey: sessionKey,
+            chatPreview: chatPreview,
+            chatDeliveryContext: context)
         do {
             guard shouldContinue() else { return }
             _ = try await self.watchMessagingService.syncAppSnapshot(message)
@@ -8921,6 +8947,11 @@ extension NodeAppModel {
     }
 
     func handleDeepLink(url: URL) async {
+        // Fork: `openclaw://session?key=…` (push taps, card links) opens that agent thread in a sheet.
+        if let sessionKey = ForkSessionDeepLink.sessionKey(from: url) {
+            ForkSheetPresenter.shared.present(.thread(sessionKey))
+            return
+        }
         guard let route = DeepLinkParser.parse(url) else { return }
 
         switch route {
