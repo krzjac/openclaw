@@ -158,11 +158,11 @@ final class ForkPRStore {
             additions: 86,
             deletions: 12,
             files: [
-                File(path: "frontend/src/app/students/students-list.component.ts", add: 54, del: 8),
-                File(path: "frontend/src/app/students/students-list.component.html", add: 22, del: 3),
-                File(path: "backend/src/modules/students/students.query.ts", add: 10, del: 1),
+                Preview.File(path: "frontend/src/app/students/students-list.component.ts", add: 54, del: 8),
+                Preview.File(path: "frontend/src/app/students/students-list.component.html", add: 22, del: 3),
+                Preview.File(path: "backend/src/modules/students/students.query.ts", add: 10, del: 1),
             ],
-            commits: [Commit(msg: "Uczniowie: filtr po grupie i sortowanie (X19)", oid: "4f2a9c1e")],
+            commits: [Preview.Commit(msg: "Uczniowie: filtr po grupie i sortowanie (X19)", oid: "4f2a9c1e")],
             diff: "diff --git a/backend/src/modules/students/students.query.ts\n"
                 + "+  if (query.groupId) filter.groupId = query.groupId\n",
             diff_cut: false)
