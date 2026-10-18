@@ -27,15 +27,66 @@ enum ForkGatewayHostAPI {
                 _ = try await self.request(appModel: appModel, path: "/pr-merge/api/close", body: ["key": threadKey])
             },
             merge: { urls in
-                let response = try await self.request(
-                    appModel: appModel,
-                    path: "/pr-merge/api/merge",
-                    body: ["urls": urls])
-                return self.mergeSummary(response, urls: urls)
+                try await self.merge(appModel: appModel, urls: urls)
             },
             openThread: { threadKey in
-                ForkThreadPresenter.shared.present(threadKey)
+                ForkSheetPresenter.shared.present(.thread(threadKey))
+            },
+            openPullRequest: { url in
+                ForkSheetPresenter.shared.present(.pullRequest(url))
+            },
+            prefetch: { threadKey, pullRequests in
+                if let threadKey { ForkThreadPool.shared.prefetch(threadKey, appModel: appModel) }
+                ForkPRStore.shared.prefetch(pullRequests, appModel: appModel)
             })
+    }
+
+    @MainActor
+    static func merge(appModel: NodeAppModel, urls: [String]) async throws -> String {
+        let response = try await self.request(appModel: appModel, path: "/pr-merge/api/merge", body: ["urls": urls])
+        return self.mergeSummary(response, urls: urls)
+    }
+
+    /// PR preview (description, files, commits, diff) from the host `pr-merge show`.
+    @MainActor
+    static func pullRequestPreview(appModel: NodeAppModel, url: String) async throws -> Data {
+        try await self.fetch(
+            appModel: appModel,
+            path: "/pr-merge/api/pr",
+            queryItems: [URLQueryItem(name: "u", value: url)],
+            timeout: 60)
+    }
+
+    /// Live day-thread data (the web "Praca teraz" bar source).
+    @MainActor
+    static func liveDayData(appModel: NodeAppModel) async throws -> Data {
+        try await self.fetch(
+            appModel: appModel,
+            path: "/agent-panel-live/agent-claude-data.json",
+            queryItems: [],
+            timeout: 8)
+    }
+
+    @MainActor
+    private static func fetch(
+        appModel: NodeAppModel,
+        path: String,
+        queryItems: [URLQueryItem],
+        timeout: TimeInterval) async throws -> Data
+    {
+        guard let config = appModel.activeGatewayConnectConfig,
+              let url = AuthenticatedControlUI.pageURL(config: config, path: path, queryItems: queryItems)
+        else {
+            throw Failure(message: "Brak połączenia z Gatewayem.")
+        }
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            throw Failure(message: "Nie udało się: \((payload["error"] as? String) ?? "HTTP \(status)")")
+        }
+        return data
     }
 
     /// Sends a card answer to the agent thread (same path as the web card buttons).
@@ -71,7 +122,10 @@ enum ForkGatewayHostAPI {
                 return "Zmerdżowano \(urls.map(OpenClawOCard.pullRequestLabel).joined(separator: ", ")) (podgląd)"
             },
             openThread: { threadKey in
-                ForkThreadPresenter.shared.present(threadKey)
+                ForkSheetPresenter.shared.present(.thread(threadKey))
+            },
+            openPullRequest: { url in
+                ForkSheetPresenter.shared.present(.pullRequest(url))
             })
     }
 

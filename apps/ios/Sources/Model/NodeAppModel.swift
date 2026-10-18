@@ -6251,7 +6251,10 @@ extension NodeAppModel {
         let agentID = watchFocus.agentID(for: sessionKey, appModel: self)
         let context = await self.makeWatchChatDeliveryContext(
             sessionKey: sessionKey, agentID: agentID, gatewayStableID: self.currentWatchChatGatewayStableID())
-        let chatPreview = includeChat ? await makeWatchChatPreview(sessionKey: sessionKey, agentID: agentID) : nil
+        var chatPreview = includeChat ? await makeWatchChatPreview(sessionKey: sessionKey, agentID: agentID) : nil
+        if let items = chatPreview?.items {
+            chatPreview?.items = await watchFocus.decoratedItems(items, sessionKey: sessionKey, appModel: self)
+        }
         guard shouldContinue() else { return }
         guard deliveryGeneration == self.gatewayConnectGeneration,
               sessionKey.utf8.elementsEqual(watchFocus.sessionKey(appModel: self).utf8),
@@ -8941,7 +8944,7 @@ extension NodeAppModel {
     func handleDeepLink(url: URL) async {
         // Fork: `openclaw://session?key=…` (push taps, card links) opens that agent thread in a sheet.
         if let sessionKey = ForkSessionDeepLink.sessionKey(from: url) {
-            ForkThreadPresenter.shared.present(sessionKey)
+            ForkSheetPresenter.shared.present(.thread(sessionKey))
             return
         }
         guard let route = DeepLinkParser.parse(url) else { return }

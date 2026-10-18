@@ -21,7 +21,9 @@ struct ForkWatchCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(verbatim: "\(self.card.agentGlyph) \(self.card.kind.statusLabel)")
+            Text(verbatim: self.card.kind == .work
+                ? self.card.kind.statusLabel
+                : "\(self.card.agentGlyph) \(self.card.kind.statusLabel)")
                 .font(WatchClawType.label(size: 10, weight: .bold))
                 .foregroundStyle(self.tint)
                 .lineLimit(1)
@@ -109,7 +111,7 @@ struct ForkWatchCardView: View {
         case .pr, .done: Color(red: 0.2, green: 0.72, blue: 0.36)
         case .error: Color(red: 0.95, green: 0.3, blue: 0.3)
         case .info, .cal: Color(red: 0.62, green: 0.45, blue: 0.95)
-        case .start, .night: Color(red: 0.3, green: 0.6, blue: 1.0)
+        case .start, .night, .work: Color(red: 0.3, green: 0.6, blue: 1.0)
         }
     }
 }

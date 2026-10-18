@@ -358,14 +358,15 @@ extension WatchInboxStore {
     /// Fork: the iPhone sends cards as compact `ocard:` markers (see `ChatHistoryPresentation`).
     private static func ocardFixtureItems(sentAtMs: Int64) -> [WatchChatItem] {
         // The question card first, so the timeline opens on it, then the ready PR and the rest.
-        let entries = Array(OpenClawOCardPreview.entries().suffix(4).reversed())
-        return entries.enumerated().map { index, entry in
-            let card = OpenClawOCardMarker.extract(from: entry.text)?.card
-            return WatchChatItem(
+        let entries = Array(OpenClawOCardPreview.entries().suffix(3).reversed())
+        let cards = entries.compactMap { OpenClawOCardMarker.extract(from: $0.text)?.card }
+            + [OpenClawOCardPreview.workNowCard()].compactMap(\.self)
+        return cards.enumerated().map { index, card in
+            WatchChatItem(
                 id: "watch-ocard-fixture-\(index)",
-                role: entry.role,
-                text: card.map(OpenClawOCardMarker.watchText(for:)) ?? entry.text,
-                timestampMs: sentAtMs - Int64((entries.count - index) * 60000))
+                role: "assistant",
+                text: OpenClawOCardMarker.watchText(for: card),
+                timestampMs: sentAtMs - Int64((cards.count - index) * 60000))
         }
     }
 

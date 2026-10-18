@@ -26,6 +26,25 @@ final class ForkWatchFocus {
         OpenClawDayThread.agentID(of: sessionKey)?.lowercased() ?? appModel.chatDeliveryAgentId
     }
 
+    /// Day thread on the Watch ends with a "Pracuje teraz" card while agents are working.
+    func decoratedItems(
+        _ items: [OpenClawWatchChatItem],
+        sessionKey: String,
+        appModel: NodeAppModel) async -> [OpenClawWatchChatItem]
+    {
+        let isDayThread = appModel.isLocalChatFixtureEnabled
+            ? ForkCardFixture.isEnabled
+            : OpenClawDayThread.agentID(of: sessionKey)?.lowercased() == OpenClawDayThread.agentID
+        guard isDayThread else { return items }
+        await ForkWorkNowStore.shared.refresh(appModel: appModel, maxAge: 15)
+        guard let card = OpenClawWorkItem.watchCard(for: ForkWorkNowStore.shared.items) else { return items }
+        return items + [OpenClawWatchChatItem(
+            id: "fork-work-now",
+            role: "assistant",
+            text: OpenClawOCardMarker.watchText(for: card),
+            timestampMs: Int64(Date().timeIntervalSince1970 * 1000))]
+    }
+
     func open(threadKey: String?) {
         let key = threadKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.threadOverride = (key?.isEmpty == false && key != self.dayThreadKey) ? key : nil

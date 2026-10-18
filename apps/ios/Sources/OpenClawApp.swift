@@ -629,7 +629,7 @@ struct OpenClawApp: App {
             UserDefaults.standard.set(true, forKey: "gateway.hasConnectedOnce")
             UserDefaults.standard.set(true, forKey: "onboarding.quickSetupDismissed")
             appModel.enterScreenshotFixtureMode()
-            ForkThreadPresenter.shared.presentLaunchThreadIfRequested()
+            ForkSheetPresenter.shared.presentLaunchItemIfRequested()
             if Self.screenshotNotificationGuidanceEnabled {
                 appModel._debug_presentNotificationPermissionGuidancePromptForScreenshot()
             }

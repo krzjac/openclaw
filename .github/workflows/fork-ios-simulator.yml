@@ -151,6 +151,9 @@ jobs:
           shot iphone-pasek-boczny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-sidebar-visibility visible
           shot iphone-czat-karty --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
           shot iphone-watek-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-fork-open-thread "$thread"
+          shot iphone-pr-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture \
+            --openclaw-fork-open-pr "https://github.com/example/lp-ng/pull/2198"
+          shot iphone-pracuje-teraz --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-work-now-expanded
           xcrun simctl ui "$phone" appearance dark
           shot iphone-czat-karty-ciemny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
           xcrun simctl ui "$phone" appearance light

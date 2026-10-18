@@ -8,28 +8,39 @@ public struct OpenClawOCardActions: Sendable {
     public typealias CloseThread = @MainActor @Sendable (_ threadKey: String) async throws -> Void
     public typealias Merge = @MainActor @Sendable (_ urls: [String]) async throws -> String?
     public typealias OpenThread = @MainActor @Sendable (_ threadKey: String) -> Void
+    public typealias OpenPullRequest = @MainActor @Sendable (_ url: String) -> Void
+    /// Warms the thread and PR previews while the card is on screen, so taps open instantly.
+    public typealias Prefetch = @MainActor @Sendable (_ threadKey: String?, _ pullRequests: [String]) -> Void
 
     public var answer: Answer?
     public var closeThread: CloseThread?
     public var merge: Merge?
     public var openThread: OpenThread?
+    public var openPullRequest: OpenPullRequest?
+    public var prefetch: Prefetch?
 
     public init(
         answer: Answer? = nil,
         closeThread: CloseThread? = nil,
         merge: Merge? = nil,
-        openThread: OpenThread? = nil)
+        openThread: OpenThread? = nil,
+        openPullRequest: OpenPullRequest? = nil,
+        prefetch: Prefetch? = nil)
     {
         self.answer = answer
         self.closeThread = closeThread
         self.merge = merge
         self.openThread = openThread
+        self.openPullRequest = openPullRequest
+        self.prefetch = prefetch
     }
 }
 
 extension EnvironmentValues {
     /// Fork: host app handlers for day-thread card buttons.
     @Entry public var openClawOCardActions = OpenClawOCardActions()
+    /// Fork: thread lookup for cards without their own thread (built from the visible transcript).
+    @Entry public var openClawOCardThreadIndex = OpenClawOCardThreadIndex()
 }
 
 extension OpenClawChatMessage {
@@ -54,6 +65,7 @@ struct ChatOCardView: View {
 
     let card: OpenClawOCard
     @Environment(\.openClawOCardActions) private var actions
+    @Environment(\.openClawOCardThreadIndex) private var threadIndex
     @State private var pendingAction: String?
     @State private var outcome: Outcome?
     @State private var errorText: String?
@@ -107,6 +119,9 @@ struct ChatOCardView: View {
         .opacity(self.card.kind.isCompact ? 0.85 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat-ocard-\(self.card.kind.rawValue)")
+        .task(id: self.threadKey) {
+            self.actions.prefetch?(self.threadKey, self.card.pullRequests)
+        }
         .confirmationDialog(
             "Usunąć wątek z listy?",
             isPresented: self.$confirmsClose,
@@ -159,7 +174,7 @@ struct ChatOCardView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .background(self.tint.opacity(0.14), in: Capsule())
-            if let threadKey = self.card.threadKey, let openThread = self.actions.openThread {
+            if let threadKey = self.threadKey, let openThread = self.actions.openThread {
                 Button {
                     openThread(threadKey)
                 } label: {
@@ -191,7 +206,17 @@ struct ChatOCardView: View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.triangle.pull")
                 .foregroundStyle(.secondary)
-            if let destination = URL(string: url) {
+            if let openPullRequest = self.actions.openPullRequest {
+                Button {
+                    openPullRequest(url)
+                } label: {
+                    Text(verbatim: OpenClawOCard.pullRequestLabel(url))
+                        .font(OpenClawChatTypography.body(size: 14, weight: .semibold, relativeTo: .callout))
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Otwiera podgląd PR-a")
+            } else if let destination = URL(string: url) {
                 Link(destination: destination) {
                     Text(verbatim: OpenClawOCard.pullRequestLabel(url))
                         .font(OpenClawChatTypography.body(size: 14, weight: .semibold, relativeTo: .callout))
@@ -248,7 +273,7 @@ struct ChatOCardView: View {
     private var actionRow: some View {
         if self.outcome == nil {
             VStack(alignment: .leading, spacing: 6) {
-                if self.card.kind == .question, self.actions.answer != nil, self.card.threadKey != nil {
+                if self.card.kind == .question, self.actions.answer != nil, self.threadKey != nil {
                     ForEach(self.card.options, id: \.self) { option in
                         Button {
                             self.run(option) { try await self.answer(option) }
@@ -271,7 +296,7 @@ struct ChatOCardView: View {
                         .disabled(self.pendingAction != nil)
                     }
                 }
-                if self.card.kind == .error, self.actions.answer != nil, self.card.threadKey != nil {
+                if self.card.kind == .error, self.actions.answer != nil, self.threadKey != nil {
                     Button {
                         self.run("retry") { try await self.retry() }
                     } label: {
@@ -281,6 +306,7 @@ struct ChatOCardView: View {
                     .buttonStyle(.bordered)
                     .disabled(self.pendingAction != nil)
                 }
+                // Only a card's own thread can be closed, never one borrowed from its group.
                 if self.card.kind == .done, self.card.pullRequests.isEmpty, self.card.threadKey != nil,
                    self.actions.closeThread != nil
                 {
@@ -321,13 +347,18 @@ struct ChatOCardView: View {
         }
     }
 
+    /// The card's own thread, or the thread of its task group (web parity).
+    private var threadKey: String? {
+        self.threadIndex.threadKey(for: self.card)
+    }
+
     private var tint: Color {
         switch self.card.kind {
         case .question: OpenClawChatTheme.warning
         case .pr, .done: OpenClawChatTheme.success
         case .error: OpenClawChatTheme.danger
         case .info, .cal: OpenClawChatTheme.ocardInfo
-        case .start, .night: OpenClawChatTheme.ocardProgress
+        case .start, .night, .work: OpenClawChatTheme.ocardProgress
         }
     }
 
@@ -346,13 +377,13 @@ struct ChatOCardView: View {
     }
 
     private func answer(_ option: String) async throws {
-        guard let answer = self.actions.answer, let threadKey = self.card.threadKey else { return }
+        guard let answer = self.actions.answer, let threadKey = self.threadKey else { return }
         try await answer(threadKey, option)
         self.outcome = .answered(option)
     }
 
     private func retry() async throws {
-        guard let answer = self.actions.answer, let threadKey = self.card.threadKey else { return }
+        guard let answer = self.actions.answer, let threadKey = self.threadKey else { return }
         try await answer(threadKey, "Spróbuj ponownie od miejsca, w którym przerwałeś.")
         self.outcome = .retried
     }

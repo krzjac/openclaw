@@ -8,6 +8,27 @@ public enum OpenClawOCardPreview {
         public var text: String
     }
 
+    /// Sample "Pracuje teraz" card (two agents working).
+    public static func workNowCard(now: Date = Date()) -> OpenClawOCard? {
+        let ts = now.timeIntervalSince1970
+        return OpenClawWorkItem.watchCard(
+            for: [
+                OpenClawWorkItem(
+                    agent: "kodowanie",
+                    name: "Układ PDF karty pracy (X21)",
+                    status: "pracuje",
+                    since: ts - 12 * 60,
+                    url: "https://example.invalid/chat/kodowanie/~key/dashboard/preview-x21"),
+                OpenClawWorkItem(
+                    agent: "lpng-dane",
+                    name: "Plan kursu na listopad (X22)",
+                    status: "pracuje",
+                    since: ts - 3 * 60,
+                    url: "https://example.invalid/chat/lpng-dane/~key/dashboard/preview-x22"),
+            ],
+            now: now)
+    }
+
     public static func entries(now: Date = Date()) -> [Entry] {
         let ts = now.timeIntervalSince1970
         let cards: [OpenClawOCard] = [

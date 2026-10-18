@@ -14,6 +14,8 @@ public struct OpenClawOCard: Codable, Sendable, Equatable {
         case start
         case night
         case cal
+        /// Synthetic "Pracuje teraz" card built by the app (never posted by the host).
+        case work
     }
 
     public var v: Int?
@@ -120,6 +122,7 @@ public struct OpenClawOCard: Codable, Sendable, Equatable {
             case .night: "🌙"
             case .pr: "🔀"
             case .cal: "📅"
+            case .work: "⏳"
             default: "🤖"
             }
         }
@@ -179,6 +182,7 @@ extension OpenClawOCard.Kind {
         case .start: "▶ zlecone"
         case .night: "🌙 w nocy"
         case .cal: "📅 zmiana"
+        case .work: "⏳ pracuje"
         }
     }
 
@@ -192,6 +196,7 @@ extension OpenClawOCard.Kind {
         case .start: "▶️"
         case .night: "🌙"
         case .cal: "📅"
+        case .work: "⏳"
         }
     }
 
@@ -216,6 +221,143 @@ public enum OpenClawDayThread {
     public static func isAgentThread(_ sessionKey: String?) -> Bool {
         guard let agent = self.agentID(of: sessionKey) else { return false }
         return agent.lowercased() != self.agentID
+    }
+
+    /// Control UI link `…/chat/<agent>/~key/<rest>` → session key `agent:<agent>:<rest>`.
+    public static func threadKey(fromControlUIURL url: String?) -> String? {
+        guard let url, let range = url.range(of: "/chat/") else { return nil }
+        let parts = url[range.upperBound...].split(separator: "/").map(String.init)
+        guard parts.count >= 3, parts[1] == "~key", !parts[0].isEmpty else { return nil }
+        let rest = parts[2...].map { $0.removingPercentEncoding ?? $0 }
+        return (["agent", parts[0]] + rest).joined(separator: ":")
+    }
+}
+
+/// Fork: thread lookup for cards without their own thread key, like the web cards: a group's
+/// thread comes from any card of that group that has one; PR-tracking cards (group = PR URL)
+/// join the task whose card listed that PR, or the task named "(X18)" in their title.
+public struct OpenClawOCardThreadIndex: Sendable, Equatable {
+    private var keysByGroup: [String: String] = [:]
+    private var groupsByPullRequest: [String: String] = [:]
+
+    public init() {}
+
+    public init(cards: [OpenClawOCard]) {
+        for card in cards {
+            guard let group = card.g, !Self.isURLGroup(group) else { continue }
+            if let key = card.threadKey, self.keysByGroup[group] == nil {
+                self.keysByGroup[group] = key
+            }
+            for url in card.pullRequests where self.groupsByPullRequest[Self.normalized(url)] == nil {
+                self.groupsByPullRequest[Self.normalized(url)] = group
+            }
+        }
+    }
+
+    public var isEmpty: Bool {
+        self.keysByGroup.isEmpty
+    }
+
+    public func threadKey(for card: OpenClawOCard) -> String? {
+        if let key = card.threadKey { return key }
+        guard let group = self.taskGroup(for: card) else { return nil }
+        return self.keysByGroup[group]
+    }
+
+    private func taskGroup(for card: OpenClawOCard) -> String? {
+        guard let group = card.g else { return nil }
+        guard Self.isURLGroup(group) else { return group }
+        if let task = self.groupsByPullRequest[Self.normalized(group)] { return task }
+        return Self.taskTag(in: card.title)
+    }
+
+    /// "(X18)" in a title.
+    static func taskTag(in title: String) -> String? {
+        guard let open = title.range(of: "(X") else { return nil }
+        let digits = title[open.upperBound...].prefix { $0.isNumber }
+        guard !digits.isEmpty,
+              title[open.upperBound...].dropFirst(digits.count).first == ")"
+        else { return nil }
+        return "X\(digits)"
+    }
+
+    private static func isURLGroup(_ group: String) -> Bool {
+        group.lowercased().hasPrefix("http")
+    }
+
+    private static func normalized(_ url: String) -> String {
+        url.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")).lowercased()
+    }
+}
+
+/// Fork: "Pracuje teraz" — live work from the Gateway host (`/agent-panel-live/agent-claude-data.json`,
+/// field `dzien.items`), the same source as the web bar.
+public struct OpenClawWorkItem: Decodable, Sendable, Equatable, Identifiable {
+    public var agent: String?
+    public var name: String?
+    public var status: String?
+    public var since: Double?
+    public var step: String?
+    public var url: String?
+    public var pr: String?
+
+    public init(agent: String?, name: String?, status: String?, since: Double?, step: String? = nil, url: String?) {
+        self.agent = agent
+        self.name = name
+        self.status = status
+        self.since = since
+        self.step = step
+        self.url = url
+        self.pr = nil
+    }
+
+    public var id: String {
+        [self.agent, self.name, self.url, self.since.map { String($0) }].compactMap(\.self).joined(separator: "|")
+    }
+
+    public var isWorking: Bool {
+        self.status == "pracuje"
+    }
+
+    public var threadKey: String? {
+        OpenClawDayThread.threadKey(fromControlUIURL: self.url)
+    }
+
+    /// "12 min", "2 h 5 min".
+    public func elapsedText(now: Date = Date()) -> String? {
+        guard let since, since > 0 else { return nil }
+        let minutes = max(0, Int(now.timeIntervalSince1970 - since) / 60)
+        if minutes < 1 { return "teraz" }
+        if minutes < 60 { return "\(minutes) min" }
+        return minutes % 60 == 0 ? "\(minutes / 60) h" : "\(minutes / 60) h \(minutes % 60) min"
+    }
+
+    public static func decodeWorking(from data: Data) -> [OpenClawWorkItem]? {
+        struct Payload: Decodable {
+            struct Day: Decodable {
+                var items: [OpenClawWorkItem]?
+            }
+
+            var dzien: Day?
+        }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return nil }
+        return (payload.dzien?.items ?? []).filter(\.isWorking)
+    }
+
+    /// Watch card summarizing the work in progress (one line per item).
+    public static func watchCard(for items: [OpenClawWorkItem], now: Date = Date()) -> OpenClawOCard? {
+        guard !items.isEmpty else { return nil }
+        let lines = items.prefix(4).map { item in
+            [item.agent, item.name.map { String($0.prefix(40)) }, item.elapsedText(now: now)]
+                .compactMap(\.self)
+                .joined(separator: " · ")
+        }
+        return OpenClawOCard(
+            kind: .work,
+            title: "Pracuje teraz · \(items.count)",
+            summary: lines.joined(separator: "\n"),
+            threadKey: items.count == 1 ? items[0].threadKey : nil,
+            timestamp: now.timeIntervalSince1970)
     }
 }
 

@@ -179,8 +179,15 @@ struct ChatProTab: View {
                 })
                 // iMessage-style grey bubbles for agent replies in the clean chrome.
                 .environment(\.openClawAssistantBubblesInCleanChrome, true)
-                // Fork: day-thread card buttons call the owner's Gateway host API.
+                // Fork: day-thread card buttons call the owner's Gateway host API; cards without their own
+                // thread borrow their task's thread; the day thread shows who is working now.
                 .environment(\.openClawOCardActions, ForkGatewayHostAPI.cardActions(appModel: self.appModel))
+                .environment(\.openClawOCardThreadIndex, ForkCardIndex.index(for: viewModel.messages))
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if ForkWorkNowBar.isShown(sessionKey: viewModel.sessionKey, appModel: self.appModel) {
+                        ForkWorkNowBar()
+                    }
+                }
                 .environment(
                     \.openClawEmbeddedBrowserUnavailableReason,
                     self.appModel.activeGatewayConnectConfig?.ingressAuthorization == nil ? nil :

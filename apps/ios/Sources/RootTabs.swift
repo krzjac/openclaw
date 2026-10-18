@@ -139,9 +139,9 @@ struct RootTabs: View {
             .overlay(alignment: .topLeading) {
                 self.uiTestReadinessMarker
             }
-            // Fork: agent threads from day-thread cards open as a sheet over the chat.
-            .sheet(item: Bindable(ForkThreadPresenter.shared).thread) { thread in
-                ForkThreadSheet(threadKey: thread.key)
+            // Fork: agent threads and PR previews from day-thread cards open in one sheet over the chat.
+            .sheet(item: ForkSheetPresenter.shared.sheetBinding) { root in
+                ForkSheetRoot(root: root)
             }
             .task(id: self.chatOwnerTaskIdentity) {
                 await self.appModel.restoreChatSessionRoutingIdentityIfNeeded()
