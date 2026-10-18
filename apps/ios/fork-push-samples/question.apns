@@ -1,0 +1,16 @@
+{
+  "Simulator Target Bundle": "ai.openclawfoundation.app.debug",
+  "aps": {
+    "alert": {
+      "title": "❓ kodowanie ma pytanie",
+      "body": "Który układ PDF wdrożyć dla karty pracy z obrazkami?"
+    },
+    "sound": "default",
+    "thread-id": "agent:kodowanie:dashboard:preview-x21",
+    "category": "openclaw.fork.card"
+  },
+  "openclaw.fork": {
+    "sessionKey": "agent:kodowanie:dashboard:preview-x21",
+    "kind": "question"
+  }
+}

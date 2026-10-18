@@ -1,0 +1,16 @@
+{
+  "Simulator Target Bundle": "ai.openclawfoundation.app.debug",
+  "aps": {
+    "alert": {
+      "title": "🚨 infra ma błąd",
+      "body": "Rotacja kopii zapasowych przerwana"
+    },
+    "sound": "default",
+    "thread-id": "agent:infra:dashboard:preview-x17",
+    "category": "openclaw.fork.card"
+  },
+  "openclaw.fork": {
+    "sessionKey": "agent:infra:dashboard:preview-x17",
+    "kind": "error"
+  }
+}

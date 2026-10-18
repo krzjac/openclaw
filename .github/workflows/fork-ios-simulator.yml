@@ -154,6 +154,15 @@ jobs:
           shot iphone-pr-modal --openclaw-no-reactions-fixture --openclaw-ocard-fixture \
             --openclaw-fork-open-pr "https://github.com/example/lp-ng/pull/2198"
           shot iphone-pracuje-teraz --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-work-now-expanded
+          # Push: sample host payload as a banner, then the deep link a tap uses (thread sheet).
+          shot iphone-przed-pushem --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-fork-push-fixture
+          xcrun simctl push "$phone" "$app_id" apps/ios/fork-push-samples/question.apns || true
+          sleep 3
+          xcrun simctl io "$phone" screenshot "$out/iphone-push-baner.png"
+          sleep 8
+          xcrun simctl openurl "$phone" "openclaw://session?key=$thread" || true
+          sleep 10
+          xcrun simctl io "$phone" screenshot "$out/iphone-push-otwiera-watek.png"
           xcrun simctl ui "$phone" appearance dark
           shot iphone-czat-karty-ciemny --openclaw-no-reactions-fixture --openclaw-ocard-fixture --openclaw-initial-destination chat
           xcrun simctl ui "$phone" appearance light
