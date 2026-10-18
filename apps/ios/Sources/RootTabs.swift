@@ -143,6 +143,14 @@ struct RootTabs: View {
             .sheet(item: ForkSheetPresenter.shared.sheetBinding) { root in
                 ForkSheetRoot(root: root)
             }
+            // Fork: host SSE drives card, work and thread state while the app is in the foreground.
+            .onChange(of: self.scenePhase, initial: true) { _, phase in
+                if phase == .active {
+                    ForkHostEvents.shared.start(appModel: self.appModel)
+                } else {
+                    ForkHostEvents.shared.stop()
+                }
+            }
             .task(id: self.chatOwnerTaskIdentity) {
                 await self.appModel.restoreChatSessionRoutingIdentityIfNeeded()
                 guard !Task.isCancelled else { return }

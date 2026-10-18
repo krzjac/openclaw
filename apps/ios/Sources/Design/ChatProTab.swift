@@ -188,6 +188,9 @@ struct ChatProTab: View {
                         ForkWorkNowBar()
                     }
                 }
+                .task(id: ForkCardIndex.signature(for: viewModel.messages)) {
+                    ForkThreadDirectory.shared.update(from: viewModel.messages)
+                }
                 .environment(
                     \.openClawEmbeddedBrowserUnavailableReason,
                     self.appModel.activeGatewayConnectConfig?.ingressAuthorization == nil ? nil :

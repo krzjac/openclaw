@@ -11,6 +11,8 @@ public struct OpenClawOCardActions: Sendable {
     public typealias OpenPullRequest = @MainActor @Sendable (_ url: String) -> Void
     /// Warms the thread and PR previews while the card is on screen, so taps open instantly.
     public typealias Prefetch = @MainActor @Sendable (_ threadKey: String?, _ pullRequests: [String]) -> Void
+    /// Known PR state ("OPEN", "MERGED", "CLOSED") so merged PRs do not offer a merge button.
+    public typealias PullRequestState = @MainActor @Sendable (_ url: String) -> String?
 
     public var answer: Answer?
     public var closeThread: CloseThread?
@@ -18,6 +20,7 @@ public struct OpenClawOCardActions: Sendable {
     public var openThread: OpenThread?
     public var openPullRequest: OpenPullRequest?
     public var prefetch: Prefetch?
+    public var pullRequestState: PullRequestState?
 
     public init(
         answer: Answer? = nil,
@@ -25,7 +28,8 @@ public struct OpenClawOCardActions: Sendable {
         merge: Merge? = nil,
         openThread: OpenThread? = nil,
         openPullRequest: OpenPullRequest? = nil,
-        prefetch: Prefetch? = nil)
+        prefetch: Prefetch? = nil,
+        pullRequestState: PullRequestState? = nil)
     {
         self.answer = answer
         self.closeThread = closeThread
@@ -33,6 +37,7 @@ public struct OpenClawOCardActions: Sendable {
         self.openThread = openThread
         self.openPullRequest = openPullRequest
         self.prefetch = prefetch
+        self.pullRequestState = pullRequestState
     }
 }
 
@@ -228,7 +233,11 @@ struct ChatOCardView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            if self.card.kind == .question {
+            if let state = self.actions.pullRequestState?(url), state != "OPEN" {
+                Text(verbatim: state == "MERGED" ? "zmergowany" : "zamknięty")
+                    .font(OpenClawChatTypography.captionSemiBold)
+                    .foregroundStyle(state == "MERGED" ? OpenClawChatTheme.ocardInfo : .secondary)
+            } else if self.card.kind == .question {
                 Text("szkic — po odpowiedzi")
                     .font(OpenClawChatTypography.caption)
                     .foregroundStyle(.secondary)

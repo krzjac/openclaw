@@ -84,7 +84,7 @@ private struct ForkSheetDestination: View {
         Group {
             switch self.item {
             case let .thread(key):
-                ForkThreadView(threadKey: key)
+                ForkThreadPager(threadKey: key)
             case let .pullRequest(url):
                 ForkPRView(url: url)
             }
@@ -125,7 +125,9 @@ struct ForkThreadView: View {
             .environment(\.openClawAssistantBubblesInCleanChrome, true)
             .environment(\.openClawOCardActions, ForkGatewayHostAPI.cardActions(appModel: self.appModel))
             .environment(\.openClawOCardThreadIndex, ForkCardIndex.index(for: viewModel.messages))
-            .navigationTitle(Text(verbatim: "Wątek: \(self.agentID)"))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ForkThreadHeader(threadKey: self.threadKey)
+            }
             .onAppear {
                 viewModel.resumeFromForeground()
             }
@@ -139,19 +141,27 @@ struct ForkThreadView: View {
 /// Fork: card thread lookup for a transcript, memoized on the last message so streaming stays cheap.
 @MainActor
 enum ForkCardIndex {
-    private static var memo: (signature: String, index: OpenClawOCardThreadIndex)?
+    private static var memo: [String: OpenClawOCardThreadIndex] = [:]
+
+    static func signature(for messages: [OpenClawChatMessage]) -> String {
+        "\(messages.count):\(messages.last?.id.uuidString ?? "")"
+    }
 
     static func index(for messages: [OpenClawChatMessage]) -> OpenClawOCardThreadIndex {
-        let signature = "\(messages.count):\(messages.last?.id.uuidString ?? "")"
-        if let memo, memo.signature == signature { return memo.index }
-        let cards = messages.compactMap { message -> OpenClawOCard? in
+        let signature = self.signature(for: messages)
+        if let index = self.memo[signature] { return index }
+        let index = OpenClawOCardThreadIndex(cards: self.cards(in: messages))
+        if self.memo.count > 16 { self.memo.removeAll() }
+        self.memo[signature] = index
+        return index
+    }
+
+    static func cards(in messages: [OpenClawChatMessage]) -> [OpenClawOCard] {
+        messages.compactMap { message -> OpenClawOCard? in
             guard message.role.lowercased() == "assistant" else { return nil }
             let text = message.content.compactMap(\.text).joined(separator: "\n")
             guard OpenClawOCardMarker.containsMarker(text) else { return nil }
             return OpenClawOCardMarker.extract(from: text)?.card
         }
-        let index = OpenClawOCardThreadIndex(cards: cards)
-        self.memo = (signature, index)
-        return index
     }
 }

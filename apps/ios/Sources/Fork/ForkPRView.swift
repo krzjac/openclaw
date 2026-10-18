@@ -5,9 +5,6 @@ import SwiftUI
 struct ForkPRView: View {
     @Environment(NodeAppModel.self) private var appModel
     let url: String
-    @State private var confirmsMerge = false
-    @State private var mergeResult: String?
-    @State private var isMerging = false
 
     private var store: ForkPRStore {
         ForkPRStore.shared
@@ -35,15 +32,6 @@ struct ForkPRView: View {
         .navigationTitle(Text(verbatim: OpenClawOCard.pullRequestLabel(self.url)))
         .onAppear {
             self.store.refreshForDisplay(self.url, appModel: self.appModel)
-        }
-        .confirmationDialog("Zmerdżować PR?", isPresented: self.$confirmsMerge, titleVisibility: .visible) {
-            Button(role: .destructive) {
-                self.merge()
-            } label: {
-                Text(verbatim: "Zmerdżuj")
-            }
-        } message: {
-            Text(verbatim: "Merge zwykle oznacza wdrożenie na produkcję.")
         }
     }
 
@@ -142,36 +130,12 @@ struct ForkPRView: View {
 
     @ViewBuilder
     private func actions(_ preview: ForkPRStore.Preview) -> some View {
-        if let mergeResult {
-            Text(verbatim: mergeResult)
-                .font(OpenClawType.subheadSemiBold)
-        } else if preview.state == "OPEN", preview.draft != true {
-            Button {
-                self.confirmsMerge = true
-            } label: {
-                HStack {
-                    if self.isMerging { ProgressView().controlSize(.small) }
-                    Text(verbatim: "Zmerdżuj").font(OpenClawType.subheadSemiBold)
-                }
-            }
-            .disabled(self.isMerging)
+        if preview.draft != true {
+            ForkMergeButton(url: self.url)
         }
         if let destination = URL(string: preview.url ?? self.url) {
             Link(destination: destination) {
                 Text(verbatim: "Otwórz na GitHubie").font(OpenClawType.subheadSemiBold)
-            }
-        }
-    }
-
-    private func merge() {
-        self.isMerging = true
-        Task { @MainActor in
-            defer { self.isMerging = false }
-            do {
-                self.mergeResult = try await ForkGatewayHostAPI.merge(appModel: self.appModel, urls: [self.url])
-                self.store.refreshForDisplay(self.url, appModel: self.appModel)
-            } catch {
-                self.mergeResult = error.localizedDescription
             }
         }
     }

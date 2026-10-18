@@ -6237,6 +6237,11 @@ extension NodeAppModel {
         }
     }
 
+    /// Fork: host events (new card, work started/finished, thread deleted) refresh the Watch at once.
+    func forkSyncWatchSnapshot(reason: String) async {
+        await self.syncWatchAppSnapshot(reason: "fork_\(reason)", includeChat: true)
+    }
+
     private func syncWatchAppSnapshot(
         reason: String,
         includeChat: Bool = false,

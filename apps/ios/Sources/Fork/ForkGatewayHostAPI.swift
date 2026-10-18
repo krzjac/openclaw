@@ -38,6 +38,9 @@ enum ForkGatewayHostAPI {
             prefetch: { threadKey, pullRequests in
                 if let threadKey { ForkThreadPool.shared.prefetch(threadKey, appModel: appModel) }
                 ForkPRStore.shared.prefetch(pullRequests, appModel: appModel)
+            },
+            pullRequestState: { url in
+                ForkPRStore.shared.previews[url]?.state
             })
     }
 
@@ -50,17 +53,21 @@ enum ForkGatewayHostAPI {
     /// PR preview (description, files, commits, diff) from the host `pr-merge show`.
     @MainActor
     static func pullRequestPreview(appModel: NodeAppModel, url: String) async throws -> Data {
-        try await self.fetch(
+        try await self.get(
             appModel: appModel,
             path: "/pr-merge/api/pr",
             queryItems: [URLQueryItem(name: "u", value: url)],
             timeout: 60)
     }
 
-    /// Live day-thread data (the web "Praca teraz" bar source).
+    /// Live day-thread data (the web "Praca teraz" bar source): the host's fresh `live.json` when it
+    /// serves `/pr-merge/api/live`, otherwise the panel copy (refreshed every ~10 s in the container).
     @MainActor
     static func liveDayData(appModel: NodeAppModel) async throws -> Data {
-        try await self.fetch(
+        if let data = try? await self.get(appModel: appModel, path: "/pr-merge/api/live", queryItems: [], timeout: 8) {
+            return data
+        }
+        return try await self.get(
             appModel: appModel,
             path: "/agent-panel-live/agent-claude-data.json",
             queryItems: [],
@@ -68,7 +75,7 @@ enum ForkGatewayHostAPI {
     }
 
     @MainActor
-    private static func fetch(
+    static func get(
         appModel: NodeAppModel,
         path: String,
         queryItems: [URLQueryItem],

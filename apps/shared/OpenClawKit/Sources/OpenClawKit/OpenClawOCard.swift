@@ -239,11 +239,16 @@ public enum OpenClawDayThread {
 public struct OpenClawOCardThreadIndex: Sendable, Equatable {
     private var keysByGroup: [String: String] = [:]
     private var groupsByPullRequest: [String: String] = [:]
+    private var latestKeyByAgent: [String: String] = [:]
 
     public init() {}
 
+    /// `cards` in transcript order (oldest first).
     public init(cards: [OpenClawOCard]) {
         for card in cards {
+            if let key = card.threadKey, let agent = OpenClawDayThread.agentID(of: key) {
+                self.latestKeyByAgent[agent.lowercased()] = key
+            }
             guard let group = card.g, !Self.isURLGroup(group) else { continue }
             if let key = card.threadKey, self.keysByGroup[group] == nil {
                 self.keysByGroup[group] = key
@@ -258,10 +263,12 @@ public struct OpenClawOCardThreadIndex: Sendable, Equatable {
         self.keysByGroup.isEmpty
     }
 
+    /// Own thread, then the task group's thread, then the agent's latest thread (always openable).
     public func threadKey(for card: OpenClawOCard) -> String? {
         if let key = card.threadKey { return key }
-        guard let group = self.taskGroup(for: card) else { return nil }
-        return self.keysByGroup[group]
+        if let group = self.taskGroup(for: card), let key = self.keysByGroup[group] { return key }
+        guard let agent = card.agent?.lowercased() else { return nil }
+        return self.latestKeyByAgent[agent]
     }
 
     private func taskGroup(for card: OpenClawOCard) -> String? {
@@ -332,16 +339,17 @@ public struct OpenClawWorkItem: Decodable, Sendable, Equatable, Identifiable {
         return minutes % 60 == 0 ? "\(minutes / 60) h" : "\(minutes / 60) h \(minutes % 60) min"
     }
 
+    /// Accepts the panel payload (`dzien.items`) and the host's `live.json` (`items`).
     public static func decodeWorking(from data: Data) -> [OpenClawWorkItem]? {
+        struct Day: Decodable {
+            var items: [OpenClawWorkItem]?
+        }
         struct Payload: Decodable {
-            struct Day: Decodable {
-                var items: [OpenClawWorkItem]?
-            }
-
             var dzien: Day?
+            var items: [OpenClawWorkItem]?
         }
         guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return nil }
-        return (payload.dzien?.items ?? []).filter(\.isWorking)
+        return (payload.dzien?.items ?? payload.items ?? []).filter(\.isWorking)
     }
 
     /// Watch card summarizing the work in progress (one line per item).

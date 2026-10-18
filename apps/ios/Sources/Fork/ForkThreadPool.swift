@@ -13,6 +13,8 @@ final class ForkThreadPool {
     private var models: [String: OpenClawChatViewModel] = [:]
     private var recency: [String] = []
     private var gatewayID: String?
+    /// The page the sheet shows right now; never evicted.
+    var pinned: String?
 
     func prefetch(_ threadKey: String, appModel: NodeAppModel) {
         guard appModel.isOperatorGatewayConnected || appModel.isLocalChatFixtureEnabled else { return }
@@ -36,6 +38,12 @@ final class ForkThreadPool {
         return model
     }
 
+    /// A thread the host deleted (merged PR, closed task) leaves the pool.
+    func discard(_ threadKey: String) {
+        self.recency.removeAll { $0 == threadKey }
+        self.models.removeValue(forKey: threadKey)?.detachTransport()
+    }
+
     private func touch(_ threadKey: String) {
         self.recency.removeAll { $0 == threadKey }
         self.recency.append(threadKey)
@@ -44,10 +52,11 @@ final class ForkThreadPool {
     private func evictOverflow() {
         // A thread open in the sheet stays attached even when scrolling warms newer ones.
         let presenter = ForkSheetPresenter.shared
-        let presented = Set(([presenter.root].compactMap(\.self) + presenter.path).compactMap { item -> String? in
+        var presented = Set(([presenter.root].compactMap(\.self) + presenter.path).compactMap { item -> String? in
             if case let .thread(key) = item { return key }
             return nil
         })
+        if let pinned { presented.insert(pinned) }
         var overflow = self.recency.count - Self.capacity
         for key in self.recency where overflow > 0 && !presented.contains(key) {
             self.recency.removeAll { $0 == key }

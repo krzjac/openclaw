@@ -95,9 +95,13 @@ struct ForkWorkNowBar: View {
             }
         }
         .task {
+            // Host events refresh this list; the slow loop only covers a missing event stream.
+            await self.store.refresh(appModel: self.appModel, maxAge: 0)
             while !Task.isCancelled {
-                await self.store.refresh(appModel: self.appModel)
-                try? await Task.sleep(for: .seconds(10))
+                try? await Task.sleep(for: .seconds(60))
+                if !ForkHostEvents.shared.isConnected {
+                    await self.store.refresh(appModel: self.appModel, maxAge: 0)
+                }
             }
         }
     }

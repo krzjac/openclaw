@@ -72,6 +72,12 @@ final class ForkPRStore {
         }
     }
 
+    /// After a merge: fetch the new state right away.
+    func invalidate(_ url: String, appModel: NodeAppModel) {
+        self.fetchedAt[url] = nil
+        self.enqueue(url, appModel: appModel, front: true)
+    }
+
     /// Called when the sheet opens: show what we have, refresh if it is older than a minute.
     func refreshForDisplay(_ url: String, appModel: NodeAppModel) {
         self.warmFromDisk(url)
