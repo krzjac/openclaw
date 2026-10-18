@@ -166,8 +166,16 @@ struct ForkPRView: View {
         ].compactMap(\.self).joined(separator: " · ")
     }
 
+    /// Inline markdown keeps line breaks; `#` headings (not inline syntax) become bold lines.
     private static func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("#") else { return line }
+            let heading = trimmed.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+            return heading.isEmpty ? line : "**\(heading)**"
+        }
+        let source = lines.joined(separator: "\n")
+        return (try? AttributedString(markdown: source, options: options)) ?? AttributedString(text)
     }
 }

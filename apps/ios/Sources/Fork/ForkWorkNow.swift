@@ -55,45 +55,44 @@ struct ForkWorkNowBar: View {
 
     var body: some View {
         let items = self.store.items
-        Group {
+        // Always a real (zero-height) view, so the loading task runs before there is anything to show.
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: 0)
             if !items.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        withAnimation(.snappy) { self.isExpanded.toggle() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text(verbatim: "Pracuje teraz · \(items.count)")
-                                .font(OpenClawType.subheadSemiBold)
-                            if !self.isExpanded, let first = items.first {
-                                Text(verbatim: [first.agent, first.name].compactMap(\.self).joined(separator: " · "))
-                                    .font(OpenClawType.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: self.isExpanded ? "chevron.up" : "chevron.down")
-                                .font(OpenClawType.caption2Bold)
+                Button {
+                    withAnimation(.snappy) { self.isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(verbatim: "Pracuje teraz · \(items.count)")
+                            .font(OpenClawType.subheadSemiBold)
+                        if !self.isExpanded, let first = items.first {
+                            Text(verbatim: [first.agent, first.name].compactMap(\.self).joined(separator: " · "))
+                                .font(OpenClawType.footnote)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .contentShape(Rectangle())
+                        Spacer(minLength: 0)
+                        Image(systemName: self.isExpanded ? "chevron.up" : "chevron.down")
+                            .font(OpenClawType.caption2Bold)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("ForkWorkNow.Toggle")
-                    if self.isExpanded {
-                        ForEach(items) { item in
-                            self.row(item)
-                        }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ForkWorkNow.Toggle")
+                if self.isExpanded {
+                    ForEach(items) { item in
+                        self.row(item)
                     }
                 }
-                .background(.bar)
-                .overlay(alignment: .bottom) {
-                    Divider()
-                }
+                Divider()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(items.isEmpty ? AnyShapeStyle(.clear) : AnyShapeStyle(.bar))
         .task {
             // Host events refresh this list; the slow loop only covers a missing event stream.
             await self.store.refresh(appModel: self.appModel, maxAge: 0)
