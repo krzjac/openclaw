@@ -137,6 +137,10 @@ jobs:
           xcrun simctl status_bar "$phone" override --time 9:41 --batteryState charged --batteryLevel 100 \
             --cellularBars 4 --wifiBars 3 || true
           xcrun simctl install "$phone" "$app"
+          # Full notification permission (no system prompt) so pushed samples show as banners.
+          if brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1; then
+            applesimutils --byId "$phone" --bundle "$app_id" --setPermissions notifications=YES || true
+          fi
           # First-boot system banners (e.g. Apple Intelligence) fade before the screenshots.
           sleep 60
 
@@ -160,7 +164,8 @@ jobs:
           sleep 3
           xcrun simctl io "$phone" screenshot "$out/iphone-push-baner.png"
           sleep 8
-          xcrun simctl openurl "$phone" "openclaw://session?key=$thread" || true
+          # Debug builds register the openclaw-debug scheme (Release: openclaw).
+          xcrun simctl openurl "$phone" "openclaw-debug://session?key=$thread" || true
           sleep 10
           xcrun simctl io "$phone" screenshot "$out/iphone-push-otwiera-watek.png"
           xcrun simctl ui "$phone" appearance dark
